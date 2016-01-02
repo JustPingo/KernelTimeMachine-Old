@@ -4,7 +4,7 @@
 
 // KernelTimeMachine
 // Safe CIA manager
-// Licenced under GNU General Public License (GPL)
+// Licensed under GNU General Public License (GPL)
 // Check out https://www.gnu.org/licenses/gpl.html
 
 Handle am;
