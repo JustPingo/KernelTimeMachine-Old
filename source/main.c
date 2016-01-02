@@ -38,7 +38,7 @@ int error(char* msg, u8 errorCode) {
 	}
 }
 
-bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console.
+bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console. (needs sha1.c)
 
 	// Just figured out there's a cleaner syntax to perform sdmc reads. Note to future.
 	union {
@@ -75,9 +75,10 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	u8* size = malloc(0x4);
 	FSFILE_Read(file, &bytesRead, 0x19, size, 0x4);
-	longChar.c = *size; // this might be buggy because of little endian shit
+	longChar.c = size; // this might be buggy because of little endian shit
+	free(size);
 
-	u32 blockAmount = longChar.l / 0x160000;
+	u32 blockAmount = longChar.l / 0x160000; // Finds how many blocks of 4MB you have in the file
 	u32 i;
 	char* block = malloc(0x160000);
 	for (i = 0; i < blockAmount; i++) {
@@ -92,6 +93,8 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	free(block);
 
+	FSFILE_Close(file);
+
 	if (!SHA1Result(&context)) { free(buf); return false; }
 
 	union {
@@ -99,7 +102,7 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 		unsigned i[0x5];
 	} shaBytes;
 
-	shaBytes.c = *buf;
+	shaBytes.c = buf;
 	free(buf);
 
 	for (i = 0; i < 5; i++) {
@@ -111,10 +114,146 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 }
 
-bool installTTP(char* path) {
+bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 
-	FILE *ciaFile = fopen(path, "r");
+	Result res;
 
+	printf("Installing %s...\n", name);
+	Handle ciaHandle;
+	AM_TitleEntry ciaInfo;
+	FILE* file = fopen(path, "rb");
+	if (file == NULL) return false;
+
+	res = AM_GetCiaFileInfo(u8 mediatype, &ciaInfo, cia);
+
+	if (res != 0) return false;
+
+	u32 i;
+	for (i = 0; i < sizeof(installedTitleIDs) / 8; i++) {
+		if (installedTitleIDs[i] == ciaInfo.titleID) {
+			if (titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediaType, ciaInfo.titleID);
+			else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
+			break;
+		}
+	}
+
+	res = AM_StartCiaInstall(mediatype, &ciaHandle);
+	if (res != 0) return false;
+
+	fseek(file, 0, SEEK_END);
+	off_t size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	u32 blockAmount = size / 0x160000; // Finds how many blocks of 4MB you have in the file
+	char* block = malloc(0x160000);
+	for (i = 0; i < blockAmount; i++) {
+		fread(block, 1, 0x160000, file);
+		fwrite(block, 1, 0x160000, ciaHandle);
+	}
+
+	if (size % 0x160000 != 0) {
+		fread(block, 1, size-0x160000*blockAmount, file);
+		fwrite(block, 1, size-0x160000*blockAmount, ciaHandle);
+	}
+
+	free(block);
+
+	res = AM_FinishCiaInstall(mediatype, &ciaHandle);
+	if (res != 0) return false;
+
+	if (ciaInfo.titleID == 0x0004013800000002LL || ciaInfo.titleID == 0x0004013820000002LL) { // If you're installing NATIVE_FIRM
+		AM_InstallNativeFirm();
+	}
+
+	return true;
+	
+}
+
+bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip and installCIA)
+
+	FS_Archive archive = {ARCH_SDMC, {PATH_EMPTY, 0, 0}};
+	FSUSER_DeleteFile(archive, "/tmp/ttp.tmp");
+	FILE* ttp = fopen(path, "rb");
+	FILE* tmp = fopen("/tmp/ttp.tmp", "wb"); 
+
+	u32 titlesAmount;
+	AM_GetTitleCount(mediatype, &titlesAmount);
+	u64* titleIDs = malloc(sizeof(u64) * titlesAmount);
+	AM_GetTitleIdList(mediatype, titlesAmount, titleIDs);
+
+	u32 size;
+	fseek(ttp, 0x19, SEEK_SET);
+	fread(&size, 0x4, 1, ttp);
+	fseek(ttp, 0x1D, SEEK_SET);
+
+	u32 blockAmount = size / 0x160000; // Finds how many blocks of 4MB you have in the file
+	u32 i;
+	char* block = malloc(0x160000);
+	for (i = 0; i < blockAmount; i++) {
+		fread(block, 1, 0x160000, ttp);
+		fwrite(block, 1, 0x160000, tmp);
+	}
+
+	if (size % 0x160000 != 0) {
+		fread(block, 1, size-0x160000*blockAmount, ttp);
+		fwrite(block, 1, size-0x160000*blockAmount, tmp);
+	}
+
+	free(block);
+
+	fclose(ttp);
+	fclose(tmp);
+
+	u32 zipError = 0;
+	zip* zipFile = zip_open("/tmp/ttp.tmp", 0, &zipError);
+
+	FSUSER_DeleteDirectoryRecursively(archive, "/tmp/cias");
+	FSUSER_CreateDirectory(archive, "/tmp/cias", 0);
+
+	u16 i;
+	zip_stat_t entry;
+	zip_file_t entryFile;
+	char* ciaPath;
+	FILE* cia;
+	for (i = 0; i < zip_get_num_entries(zipFile, 0); i++) {
+		if (zip_stat_index(zipFile, i, 0, &entry) == 0) {
+			ciaPath = malloc(10 + strlen(entry.name));
+			strcpy(ciaPath, "/tmp/cias/");
+			strcat(ciaPath, entry.name);
+			entryFile = zip_fopen_index(zipFile, i, 0);
+			cia = fopen(ciaPath);
+
+			blockAmount = entry.size / 0x160000;
+			u32 i;
+			block = malloc(0x160000);
+			for (i = 0; i < blockAmount; i++) {
+				zip_fread(entryFile, 0x160000, block);
+				fwrite(block, 1, 0x160000, cia);
+			}
+
+			if (size % 0x160000 != 0) {
+				zip_fread(entryFile, size-0x160000*blockAmount, block);
+				fwrite(block, 1, size-0x160000*blockAmount, cia);
+			}
+
+			free(block);
+			zip_fclose(entryFile);
+			fclose(cia);
+
+			if (!installCIA(ciaPath, mediatype, entry.name))
+				if (!installCIA(ciaPath, mediatype, entry.name)) // Tries to install the CIA 3 times then give up. If it has to give up, that probably means brick.
+					installCIA(ciaPath, mediatype, entry.name);
+
+			free(ciaPath);
+		}
+	}
+
+	zip_close(zipFile);
+	FSUSER_DeleteDirectoryRecursively(archive, "/tmp/cias");
+	FSUSER_DeleteFile(archive, "/tmp/ttp.tmp");
+
+	free(titleIDs);
+
+	return true;
 
 }
 
@@ -193,13 +332,18 @@ u8 downgradeMenu() {
 
 	canContinue = false;
 
-packChoice: // yes i know gotoes are the devil
 	Handle packagesDir;
 	FS_archive fsarchive;
+	FS_DirectoryEntry* entries[16];
+	u32 actualAmount;
+	u8 currentPack;
+	bool showNot;
+	FS_DirectoryEntry chosenPack;
+
+packChoice: // despite common belief, gotoes are great when you're not doing the fuck with the memory
 	res = FSUSER_OpenDirectory(0, &packagesDir, &fsarchive, "/downgrade");
 
-	FS_DirectoryEntry* entries[16] = malloc(16 * sizeof(FS_DirectoryEntry));
-	u32 actualAmount;
+	entries[16] = malloc(16 * sizeof(FS_DirectoryEntry));
 	res = FSDIR_Read(packagesDir, &actualAmount, 16, entries);
 
 	if (actualAmount == 0) {
@@ -223,8 +367,8 @@ packChoice: // yes i know gotoes are the devil
 		}
 	}
 
-	u8 currentPack = 0;
-	bool showNot = false;
+	currentPack = 0;
+	showNot = false;
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
 		clearScreen();
@@ -255,7 +399,7 @@ packChoice: // yes i know gotoes are the devil
 		gfxSwapBuffers();
 	}
 
-	FS_DirectoryEntry chosenPack = (*entries)[currentPack];
+	chosenPack = (*entries)[currentPack];
 	FSDIR_Close(packagesDir);
 	free(entries);
 
@@ -321,7 +465,7 @@ packChoice: // yes i know gotoes are the devil
 			consoleClear();
 			clearScreen();
 
-			printf("Your downgrade pack (or KTM itself) seems corrupted or innapropriate.\n");
+			printf("Your downgrade pack (or KTM itself) seems corrupted or inappropriate.\n");
 			printf("Press (B) to exit.");
 
 			hidScanInput();
