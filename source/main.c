@@ -364,7 +364,7 @@ packChoice: // yes i know gotoes are the devil
 				printf("AFTER THAT POINT YOU MUST NOT TURN OFF THE CONSOLE OR REMOVE\nTHE SD CARD OR IT WILL BRICK!\n\n");
 				printf("Press (A) to proceed.\n");
 				if (kDown & KEY_A)
-					conContinue = true;
+					canContinue = true;
 			} else {
 				printf("To be extra sure, please leave it charging a bit.\n");
 				printf("Current charging level: %i of 3 needed\n\n", batteryLevel);
