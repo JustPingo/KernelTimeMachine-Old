@@ -75,17 +75,10 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	u8* size = malloc(0x4);
 	FSFILE_Read(file, &bytesRead, 0x19, size, 0x4);
-<<<<<<< HEAD
 	longChar.c = size; // this might be buggy because of little endian shit
 	free(size);
 
-	u32 blockAmount = longChar.l / 0x160000; // Finds how many blocks of 4MB you have in the file
-=======
-	//longChar.c = *size; // this might be buggy because of little endian shit
-	//Yeah, turns out to make a little shit, uncommenting for you to fix
-	
 	u32 blockAmount = longChar.l / 0x160000;
->>>>>>> origin/master
 	u32 i;
 	char* block = malloc(0x160000);
 	for (i = 0; i < blockAmount; i++) {
@@ -109,12 +102,7 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 		unsigned i[0x5];
 	} shaBytes;
 
-<<<<<<< HEAD
 	shaBytes.c = buf;
-=======
-	//shaBytes.c = *buf;
-	//Same here
->>>>>>> origin/master
 	free(buf);
 
 	for (i = 0; i < 5; i++) {
@@ -167,7 +155,6 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 		fwrite(block, 1, size-0x160000*blockAmount, ciaHandle);
 	}
 
-<<<<<<< HEAD
 	free(block);
 
 	res = AM_FinishCiaInstall(mediatype, &ciaHandle);
@@ -268,9 +255,6 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 
 	return true;
 
-=======
-	FILE *ciaFile = fopen(path, "r");
->>>>>>> origin/master
 }
 
 u8 downgradeMenu() {
@@ -352,10 +336,9 @@ u8 downgradeMenu() {
 
 	canContinue = false;
 
-<<<<<<< HEAD
 	Handle packagesDir;
 	FS_archive fsarchive;
-	FS_DirectoryEntry* entries[16];
+	FS_DirectoryEntry* entries;
 	u32 actualAmount;
 	u8 currentPack;
 	bool showNot;
@@ -364,22 +347,10 @@ u8 downgradeMenu() {
 packChoice: // despite common belief, gotoes are great when you're not doing the fuck with the memory
 	res = FSUSER_OpenDirectory(0, &packagesDir, &fsarchive, "/downgrade");
 
-	entries[16] = malloc(16 * sizeof(FS_DirectoryEntry));
-=======
-packChoice: ; // yes i know gotoes are the devil
-	Handle packagesDir;
-	FS_Archive fsarchive;
-	FS_Path p = {PATH_UTF16, NULL, "/downgrade"}; //not sure if I should set size to null.
-	res = FSUSER_OpenDirectory(&packagesDir, fsarchive, p);
-
 	//I have no idea if this works correctly, apparently you can't set it on the same line, pointers when referencing are redundant
-	FS_DirectoryEntry *entries;
 	entries = malloc(16 * sizeof(FS_DirectoryEntry));
 	
-	u32 actualAmount;
->>>>>>> origin/master
 	res = FSDIR_Read(packagesDir, &actualAmount, 16, entries);
-
 	if (actualAmount == 0) {
 		while (aptMainLoop() && !canContinue) {
 			consoleClear();
@@ -433,11 +404,7 @@ packChoice: ; // yes i know gotoes are the devil
 		gfxSwapBuffers();
 	}
 
-<<<<<<< HEAD
-	chosenPack = (*entries)[currentPack];
-=======
-	FS_DirectoryEntry chosenPack = entries[currentPack];
->>>>>>> origin/master
+	chosenPack = entries[currentPack];
 	FSDIR_Close(packagesDir);
 	free(entries);
 
