@@ -1,4 +1,7 @@
 #include <3ds.h>
+#include <string.h>
+#include <malloc.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include "Archives.h"
 #include "sha1.h"
@@ -10,6 +13,7 @@
 
 Handle am;
 PrintConsole topConsole;
+PrintConsole botConsole;
 
 u8* fbTopLeft;
 u8* fbTopRight;
@@ -252,6 +256,16 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 
 	return true;
 
+}
+
+volatile char* threadPath;
+volatile u8 threadMediatype;
+volatile bool isDone;
+Handle threadInstallHandle;
+
+void installTTPthread() {
+	installTTP(threadPath, threadMediatype);
+	isDone = true;
 }
 
 u8 downgradeMenu() {
@@ -527,6 +541,38 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 	if (!canContinue) return 0;
 
 	// POINT OF NO RETURN
+
+	u32 *threadStack = memalign(32, 4 * 1024);
+
+	threadPath = completePath;
+	threadMediatype = mediatype_NAND;
+	isDone = false;
+
+	consoleClear();
+	printf("DOWNGRADE PROCESS HAS STARTED. FOR YOUR OWN SAFETY:\n\n");
+	printf("DO NOT panic, this won't take long.\n");
+	printf("DO NOT turn off you console during\nthe process: it WILL brick.\n");
+	printf("DO NOT get to HomebrewMenu during\nthe process: it WILL brick.\n");
+	printf("DO NOT remove the SD card during\nthe process: it WILL brick.\n");
+	printf("DO NOT remove the battery during\nthe process: it WILL brick.\n");
+	printf("AVOID to unplug the charger.\n\n");
+	printf("Please wait...");
+
+	consoleInit(GFX_BOTTOM, &botConsole);
+	consoleSelect(&botConsole);
+
+	res = svcCreateThread(&threadInstallHandle, installTTPthread, 0, &threadStack[1024], 0x3f, 0);
+
+	while (!isDone) {
+		gspWaitForVBlank();
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+	}
+
+	consoleClear();
+	consoleSelect(&topConsole);
+
+	printf("Downgrade complete.\nPress (START) to reboot the console.");
 
 	return 1;
 }
