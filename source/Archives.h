@@ -64,7 +64,7 @@ extern "C" {
  *  @{
  */
 
-#include "zlib.h"
+#include <zlib.h>
 
 /**
  * A zip
