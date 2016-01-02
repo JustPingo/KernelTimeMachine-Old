@@ -574,7 +574,23 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 
 	printf("Downgrade complete.\nPress (START) to reboot the console.");
 
-	return 1;
+	while (aptMainLoop()) {
+
+		gspWaitForVBlank();
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+
+		hidScanInput();
+		kDown = hidKeysDown();
+		if (kDown & KEY_START) {
+			aptOpenSession();
+			APT_HardwareResetAsync(NULL);
+			aptCloseSession();
+			return 0;
+		}
+	}
+
+	return 0;
 }
 
 
