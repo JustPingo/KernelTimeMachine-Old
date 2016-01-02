@@ -1,5 +1,6 @@
 #include <3ds.h>
 #include <stdio.h>
+#include "libzip/zip.h"
 #include "sha1.h"
 
 // KernelTimeMachine
@@ -113,6 +114,7 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 bool installTTP(char* path) {
 
 	FILE *ciaFile = fopen(path, "r");
+
 
 }
 
