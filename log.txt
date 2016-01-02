@@ -1,0 +1,2 @@
+main.c
+arm-none-eabi-gcc -MMD -MP -MF /c/Users/Théo/Dropbox/eSpwn/panic/KernelTimeMachine/build/main.d -g -Wall -O2 -mword-relocations -fomit-frame-pointer -ffunction-sections -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -I/c/Users/Théo/Dropbox/eSpwn/panic/KernelTimeMachine/include -I/G/devkitpro/libctru/include -I/c/Users/Théo/Dropbox/eSpwn/panic/KernelTimeMachine/build -DARM11 -D_3DS -c /c/Users/Théo/Dropbox/eSpwn/panic/KernelTimeMachine/source/main.c -o main.o 

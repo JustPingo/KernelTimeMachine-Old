@@ -1,6 +1,6 @@
 #include <3ds.h>
 #include <stdio.h>
-//#include "libzip/zip.h"
+#include "Archives.h"
 #include "sha1.h"
 
 // KernelTimeMachine
@@ -36,13 +36,14 @@ int error(char* msg, u8 errorCode) {
 		if (kDown & KEY_START)
 			return errorCode;
 	}
+	return 0;
 }
 
 bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console. (needs sha1.c)
 
 	// Just figured out there's a cleaner syntax to perform sdmc reads. Note to future.
 	union {
-		u8 c[4];
+		u8 c;
 		u32 l;
 	} longChar; // easy way to convert u8[4] to u32
 
@@ -94,11 +95,12 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 	free(block);
 
 	FSFILE_Close(file);
+	FSUSER_CloseArchive(&archive);
 
 	if (!SHA1Result(&context)) { free(buf); return false; }
 
 	union {
-		char c[0x14];
+		char c;
 		unsigned i[0x5];
 	} shaBytes;
 
@@ -117,21 +119,27 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 
 	Result res;
-
+	FS_Archive archive = {0, {PATH_EMPTY, 0, 0}};
+	FSUSER_OpenArchive(&archive);
 	printf("Installing %s...\n", name);
 	Handle ciaHandle;
+	Handle ciaFileHandle;
 	AM_TitleEntry ciaInfo;
+
+	FSUSER_OpenFile(&ciaFileHandle, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
+	res = AM_GetCiaFileInfo(mediatype, &ciaInfo, ciaFileHandle);
+	FSFILE_Close(ciaFileHandle);
+	FSUSER_CloseArchive(&archive);
+	if (res != 0) return false;
+
 	FILE* file = fopen(path, "rb");
 	if (file == NULL) return false;
 
-	res = AM_GetCiaFileInfo(u8 mediatype, &ciaInfo, cia);
-
-	if (res != 0) return false;
 
 	u32 i;
 	for (i = 0; i < sizeof(installedTitleIDs) / 8; i++) {
 		if (installedTitleIDs[i] == ciaInfo.titleID) {
-			if (titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediaType, ciaInfo.titleID);
+			if (ciaInfo.titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, ciaInfo.titleID);
 			else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
 			break;
 		}
@@ -145,14 +153,15 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 	fseek(file, 0, SEEK_SET);
 	u32 blockAmount = size / 0x160000; // Finds how many blocks of 4MB you have in the file
 	char* block = malloc(0x160000);
+	u32* bytesWritten;
 	for (i = 0; i < blockAmount; i++) {
 		fread(block, 1, 0x160000, file);
-		fwrite(block, 1, 0x160000, ciaHandle);
+		FSFILE_Write(ciaHandle, bytesWritten, 0x160000*i, block, 0x160000, 0);
 	}
 
 	if (size % 0x160000 != 0) {
 		fread(block, 1, size-0x160000*blockAmount, file);
-		fwrite(block, 1, size-0x160000*blockAmount, ciaHandle);
+		FSFILE_Write(ciaHandle, bytesWritten, 0x160000*blockAmount, block, size-0x160000*blockAmount, 0);
 	}
 
 	free(block);
@@ -170,10 +179,12 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 
 bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip and installCIA)
 
-	FS_Archive archive = {ARCH_SDMC, {PATH_EMPTY, 0, 0}};
-	FSUSER_DeleteFile(archive, "/tmp/ttp.tmp");
+	Result res;
+	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
+	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
+	FSUSER_CreateDirectory(archive, fsMakePath(PATH_ASCII, "/tmp/cias"), 0);
 	FILE* ttp = fopen(path, "rb");
-	FILE* tmp = fopen("/tmp/ttp.tmp", "wb"); 
+	FILE* tmp = fopen("/tmp/cias/ttp.tmp", "wb"); 
 
 	u32 titlesAmount;
 	AM_GetTitleCount(mediatype, &titlesAmount);
@@ -203,53 +214,39 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 	fclose(ttp);
 	fclose(tmp);
 
-	u32 zipError = 0;
-	zip* zipFile = zip_open("/tmp/ttp.tmp", 0, &zipError);
+	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
+	FSUSER_CreateDirectory(archive, fsMakePath(PATH_ASCII, "/tmp/cias"), 0);
 
-	FSUSER_DeleteDirectoryRecursively(archive, "/tmp/cias");
-	FSUSER_CreateDirectory(archive, "/tmp/cias", 0);
+	Zip *zipHandle = ZipOpen("/tmp/cias/ttp.tmp");
+	ZipExtract(zipHandle, NULL);
+	ZipClose(zipHandle);
 
-	u16 i;
-	zip_stat_t entry;
-	zip_file_t entryFile;
+	Handle ciaDir;
+	FS_Archive fsarchive;
+	u32 actualAmount;
+	FS_DirectoryEntry* entries;
+
+	FSUSER_DeleteFile(archive, fsMakePath(PATH_ASCII, "/tmp/cias/ttp.tmp"));
+	res = FSUSER_OpenDirectory(&ciaDir, fsarchive, fsMakePath(PATH_ASCII, "/tmp/cias"));
+	if (res != 0) { free(titleIDs); return false; }
+	entries = malloc(256 * sizeof(FS_DirectoryEntry));
+	res = FSDIR_Read(ciaDir, &actualAmount, 256, entries);
+	if (res != 0) { free(titleIDs); return false; }
+
 	char* ciaPath;
-	FILE* cia;
-	for (i = 0; i < zip_get_num_entries(zipFile, 0); i++) {
-		if (zip_stat_index(zipFile, i, 0, &entry) == 0) {
-			ciaPath = malloc(10 + strlen(entry.name));
-			strcpy(ciaPath, "/tmp/cias/");
-			strcat(ciaPath, entry.name);
-			entryFile = zip_fopen_index(zipFile, i, 0);
-			cia = fopen(ciaPath);
+	for (i = 0; i < actualAmount; i++) {
+		ciaPath = malloc(14 + strlen(entries[i].shortName));
+		strcpy(ciaPath, "/tmp/cias/");
+		strcat(ciaPath, entries[i].shortName);
+		strcat(ciaPath, ".cia");
+		if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName))
+			if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName)) // Tries to install the CIA 3 times then give up. If it has to give up, that probably means brick.
+				installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName);
 
-			blockAmount = entry.size / 0x160000;
-			u32 i;
-			block = malloc(0x160000);
-			for (i = 0; i < blockAmount; i++) {
-				zip_fread(entryFile, 0x160000, block);
-				fwrite(block, 1, 0x160000, cia);
-			}
-
-			if (size % 0x160000 != 0) {
-				zip_fread(entryFile, size-0x160000*blockAmount, block);
-				fwrite(block, 1, size-0x160000*blockAmount, cia);
-			}
-
-			free(block);
-			zip_fclose(entryFile);
-			fclose(cia);
-
-			if (!installCIA(ciaPath, mediatype, entry.name))
-				if (!installCIA(ciaPath, mediatype, entry.name)) // Tries to install the CIA 3 times then give up. If it has to give up, that probably means brick.
-					installCIA(ciaPath, mediatype, entry.name);
-
-			free(ciaPath);
-		}
+		free(ciaPath);
 	}
 
-	zip_close(zipFile);
-	FSUSER_DeleteDirectoryRecursively(archive, "/tmp/cias");
-	FSUSER_DeleteFile(archive, "/tmp/ttp.tmp");
+	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
 
 	free(titleIDs);
 
@@ -337,7 +334,7 @@ u8 downgradeMenu() {
 	canContinue = false;
 
 	Handle packagesDir;
-	FS_archive fsarchive;
+	FS_Archive fsarchive;
 	FS_DirectoryEntry* entries;
 	u32 actualAmount;
 	u8 currentPack;
@@ -345,7 +342,7 @@ u8 downgradeMenu() {
 	FS_DirectoryEntry chosenPack;
 
 packChoice: // despite common belief, gotoes are great when you're not doing the fuck with the memory
-	res = FSUSER_OpenDirectory(0, &packagesDir, &fsarchive, "/downgrade");
+	res = FSUSER_OpenDirectory(&packagesDir, fsarchive, fsMakePath(PATH_ASCII, "/downgrade"));
 
 	//I have no idea if this works correctly, apparently you can't set it on the same line, pointers when referencing are redundant
 	entries = malloc(16 * sizeof(FS_DirectoryEntry));
@@ -530,6 +527,8 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 	if (!canContinue) return 0;
 
 	// POINT OF NO RETURN
+
+	return 1;
 }
 
 
@@ -597,10 +596,10 @@ int main() {
 	return 0;
 }
 
-void KernelTimeMachine(Handle amHandle) {
+/*void KernelTimeMachine(Handle amHandle) {
 
 	am = (amHandle == NULL ? (amInit() == 0 ? *amGetSessionHandle() : NULL) : amHandle);
 	if (am == NULL) return;
 	main();
 
-}
+}*/
