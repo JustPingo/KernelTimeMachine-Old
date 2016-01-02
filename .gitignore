@@ -1,0 +1,5 @@
+*.o
+*.3dsx
+*.elf
+*.smdh
+build/
