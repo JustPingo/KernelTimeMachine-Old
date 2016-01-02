@@ -545,7 +545,7 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 	u32 *threadStack = memalign(32, 4 * 1024);
 
 	threadPath = completePath;
-	threadMediatype = mediatype_NAND;
+	threadMediatype = MEDIATYPE_NAND;
 	isDone = false;
 
 	consoleClear();
@@ -584,7 +584,7 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 		kDown = hidKeysDown();
 		if (kDown & KEY_START) {
 			aptOpenSession();
-			APT_HardwareResetAsync(NULL);
+			APT_HardwareResetAsync();
 			aptCloseSession();
 			return 0;
 		}
