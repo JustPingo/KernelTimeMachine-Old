@@ -1,6 +1,6 @@
 #include <3ds.h>
 #include <stdio.h>
-#include "libzip/zip.h"
+//#include "libzip/zip.h"
 #include "sha1.h"
 
 // KernelTimeMachine
@@ -47,8 +47,8 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 	} longChar; // easy way to convert u8[4] to u32
 
 	Handle file;
-	FS_Archive archive = {ARCH_SDMC, {PATH_EMPTY, 0, 0}};
-	FSUSER_OpenArchive(0, &archive);
+	FS_Archive archive = {0, {PATH_EMPTY, 0, 0}};
+	FSUSER_OpenArchive(&archive);
 	FSUSER_OpenFile(&file, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
 
 	u32 bytesRead = 0;
@@ -75,8 +75,9 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	u8* size = malloc(0x4);
 	FSFILE_Read(file, &bytesRead, 0x19, size, 0x4);
-	longChar.c = *size; // this might be buggy because of little endian shit
-
+	//longChar.c = *size; // this might be buggy because of little endian shit
+	//Yeah, turns out to make a little shit, uncommenting for you to fix
+	
 	u32 blockAmount = longChar.l / 0x160000;
 	u32 i;
 	char* block = malloc(0x160000);
@@ -99,7 +100,8 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 		unsigned i[0x5];
 	} shaBytes;
 
-	shaBytes.c = *buf;
+	//shaBytes.c = *buf;
+	//Same here
 	free(buf);
 
 	for (i = 0; i < 5; i++) {
@@ -114,8 +116,6 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 bool installTTP(char* path) {
 
 	FILE *ciaFile = fopen(path, "r");
-
-
 }
 
 u8 downgradeMenu() {
@@ -138,9 +138,13 @@ u8 downgradeMenu() {
 		printf("DO NOT throw off your 3DS during\nthe process: it WILL break.\n");
 		printf("PLUG your charger in, and have\nsome energy in your battery.\n\n");
 
-		printf("Press (B) to get back.\n")
-		if (timer != 0) { printf("Please read the instructions to continue."); timer--; }
-		else printf("Press (A) to proceed.");
+		printf("Press (B) to get back.\n");
+		if (timer != 0) {
+			printf("Please read the instructions to continue.");
+			timer--; 
+		} else { 
+			printf("Press (A) to proceed.");
+		}
 
 		gspWaitForVBlank();
 		gfxFlushBuffers();
@@ -159,8 +163,8 @@ u8 downgradeMenu() {
 
 	u32 firmware = osGetFirmVersion(); // according to some tests, this does not work
 	u32 major = GET_VERSION_MAJOR(firmware); // doesn't matter really, will be deleted if it sucks
-	u32 minor = GET_VERSION_MINOR(firmware));
-	u32 rev = GET_VERSION_REVISION(firmware));
+	u32 minor = GET_VERSION_MINOR(firmware);
+	u32 rev = GET_VERSION_REVISION(firmware);
 
 	u8 region;
 	u8 model;
@@ -193,12 +197,16 @@ u8 downgradeMenu() {
 
 	canContinue = false;
 
-packChoice: // yes i know gotoes are the devil
+packChoice: ; // yes i know gotoes are the devil
 	Handle packagesDir;
-	FS_archive fsarchive;
-	res = FSUSER_OpenDirectory(0, &packagesDir, &fsarchive, "/downgrade");
+	FS_Archive fsarchive;
+	FS_Path p = {PATH_UTF16, NULL, "/downgrade"}; //not sure if I should set size to null.
+	res = FSUSER_OpenDirectory(&packagesDir, fsarchive, p);
 
-	FS_DirectoryEntry* entries[16] = malloc(16 * sizeof(FS_DirectoryEntry));
+	//I have no idea if this works correctly, apparently you can't set it on the same line, pointers when referencing are redundant
+	FS_DirectoryEntry *entries;
+	entries = malloc(16 * sizeof(FS_DirectoryEntry));
+	
 	u32 actualAmount;
 	res = FSDIR_Read(packagesDir, &actualAmount, 16, entries);
 
@@ -231,7 +239,7 @@ packChoice: // yes i know gotoes are the devil
 
 		printf("Please choose the downgrade pack you want to install.\n\n");
 
-		printf(" < %s >\n", (*entries)[currentPack].shortName);
+		printf(" < %s >\n", entries[currentPack].shortName);
 
 		hidScanInput();
 		kDown = hidKeysDown();
@@ -244,7 +252,7 @@ packChoice: // yes i know gotoes are the devil
 			if (currentPack == actualAmount-1) currentPack = 0;
 			else currentPack++;
 		} else if (kDown & KEY_X) {
-			if ((*entries)[currentPack].shortExt != ".ttp") showNot = true;
+			if (entries[currentPack].shortExt != ".ttp") showNot = true;
 			else canContinue = true;
 		}
 
@@ -255,7 +263,7 @@ packChoice: // yes i know gotoes are the devil
 		gfxSwapBuffers();
 	}
 
-	FS_DirectoryEntry chosenPack = (*entries)[currentPack];
+	FS_DirectoryEntry chosenPack = entries[currentPack];
 	FSDIR_Close(packagesDir);
 	free(entries);
 
@@ -348,8 +356,8 @@ packChoice: // yes i know gotoes are the devil
 		hidScanInput();
 		kDown = hidKeysDown();
 
-		PTMU_GetBatteryChargeState(NULL, &isBatteryCharging);
-		PTMU_GetBatteryLevel(NULL, &batteryLevel);
+		PTMU_GetBatteryChargeState(&isBatteryCharging);
+		PTMU_GetBatteryLevel(&batteryLevel);
 
 		printf("Please leave your console charging during the process.\n\n");
 
@@ -364,7 +372,7 @@ packChoice: // yes i know gotoes are the devil
 				printf("AFTER THAT POINT YOU MUST NOT TURN OFF THE CONSOLE OR REMOVE\nTHE SD CARD OR IT WILL BRICK!\n\n");
 				printf("Press (A) to proceed.\n");
 				if (kDown & KEY_A)
-					conContinue = true;
+					canContinue = true;
 			} else {
 				printf("To be extra sure, please leave it charging a bit.\n");
 				printf("Current charging level: %i of 3 needed\n\n", batteryLevel);
@@ -381,47 +389,18 @@ packChoice: // yes i know gotoes are the devil
 	if (!canContinue) return 0;
 
 	// POINT OF NO RETURN
-
-	
-
 }
 
-u8 legitInstallMenu() {
-	/*u32 kDown;
-	while (aptMainLoop()) {
-		consoleClear();
-		clearScreen();
-
-		printf("LEGIT CIA INSTALLATION\n\n");
-		printf("This allows you to install a certain type\nof CIA files to your sysNAND.\n\nThis won't do the work of a signpatch.\n\nBE EXTREMELY CAREFUL ABOUT WHAT YOU INSTALL");
-		printf("Press (A) to proceed.\n");
-		printf("Press (B) to get back.");
-
-		gspWaitForVBlank();
-		gfxFlushBuffers();
-		gfxSwapBuffers();
-
-		hidScanInput();
-		kDown = hidKeysDown();
-		if (kDown & KEY_B)
-			return 1;
-
-		if (kDown & KEY_A)
-			break;
-	}*/
-
-	return 1;
-}
 
 u8 mainMenu() {
 	u32 kDown;
 	while (aptMainLoop()) {
 		consoleClear();
-		clearScreen();
+		//clearScreen();
 
 		printf("KernelTimeMachine\nFix your mistakes\n");
 		printf("----------------\n\n");
-		printf("(A) Install CIA [WIP]\n")
+		printf("(A) Install CIA [WIP]\n");
 		printf("(Y) Downgrade Firmware\n");
 		printf("(L+Y) Downgrade MSET [WIP]\n");
 		printf("(R+Y) Downgrade Browser [WIP]\n");
@@ -452,7 +431,6 @@ int main() {
 	consoleInit(GFX_TOP, &topConsole);
 	consoleSelect(&topConsole);
 
-	ptmInit();
 	cfguInit();
 	fsInit();
 
@@ -474,7 +452,6 @@ int main() {
 		if (next == 0) break;
 	}
 
-	srv // remove handle
 	gfxExit();
 	return 0;
 }
