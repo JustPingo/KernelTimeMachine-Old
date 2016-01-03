@@ -17,5 +17,3 @@ Run the `make` command on the KernelTimeMachine main folder. (If you are on Wind
 
 ## Installing
 After building, place the files created by make in the 3ds folder on your SD card and launch it through the [homebrew launcher](http://smealum.github.io/3ds/).
-
-[logo]: < "![Kernel Time Machine](test.png)"
