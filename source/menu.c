@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "ttp.h"
 #include "utils.h"
+#include "sha1.h"
 
 // KernelTimeMachine
 // Safe CIA manager
@@ -66,8 +67,8 @@ u8 downgradeMenu() {
 	u32 minor = GET_VERSION_MINOR(firmware);
 	u32 rev = GET_VERSION_REVISION(firmware);
 
-	u8 region;
-	u8 model;
+	u8 region = 0;
+	u8 model = 0;
 	char* regionName;
 	char* modelName;
 	CFGU_SecureInfoGetRegion(&region);
@@ -243,19 +244,29 @@ u8 downgradeMenu() {
 	}
 
 	if (!canContinue) return 0;
+	consoleClear();
+	clearScreen();
+	printf("Verifying your downgrade pack...\nThis can take a minute.");
 
-	char* completePath = malloc(strlen(chosenPack.shortName) + 11);
-	strcpy(completePath, "/downgrade/");
-	strcat(completePath, &(chosenPack.shortName));
-	if (/*!checkTTP(region, isNew, completePath)*/true) {
-		u32 value = checkTTP(region, isNew, completePath);
-		free(completePath);
+	//char* completePath = malloc(strlen(chosenPack.shortName) + 11);
+	//strcpy(completePath, "/downgrade/");
 
+	/*char* asciiName = malloc(0x106);
+	u32 i;
+	for (i = 0; chosenPack.name[i] != NULL; i++) {
+		if (chosenPack.name[i] < 128) {
+			strcat(asciiName, &(chosenPack.name[i]));
+		}
+	}
+
+	strcat(completePath, asciiName);*/
+	char* completePath = "/downgrade.ttp";
+	//free(asciiName);
+	if (!checkTTP(region, isNew, completePath)) {
 		consoleClear();
 		clearScreen();
-
-		printf("Your downgrade pack (or KTM itself) seems corrupted or inappropriate.\n");
-		printf("Press (B) to exit.\n\n%x", value);
+		printf("Your downgrade pack (or KTM itself)\nseems corrupted or inappropriate.\n");
+		printf("Press (B) to exit.");
 		while (aptMainLoop()) {
 			hidScanInput();
 			kDown = hidKeysDown();

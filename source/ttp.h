@@ -5,7 +5,7 @@
 
 void installTTPthread();
 bool installTTP(char *path,u8 mediatype);
-u32 checkTTP(char region,bool isNew,char *path);
+bool checkTTP(char region, bool isNew, char *path);
 
 extern Handle threadInstallHandle;
 extern volatile bool isDone;

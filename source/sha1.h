@@ -1,54 +1,86 @@
-/*
- *  sha1.h
+/**
+ * \file mbedtls_sha1.h
  *
- *  Copyright (C) 1998, 2009
- *  Paul E. Jones <paulej@packetizer.com>
- *  All Rights Reserved
+ * \brief SHA-1 cryptographic hash function
  *
- *****************************************************************************
- *  $Id: sha1.h 12 2009-06-22 19:34:25Z paulej $
- *****************************************************************************
+ *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
+ *  SPDX-License-Identifier: Apache-2.0
  *
- *  Description:
- *      This class implements the Secure Hashing Standard as defined
- *      in FIPS PUB 180-1 published April 17, 1995.
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *      Many of the variable names in the SHA1Context, especially the
- *      single character names, were used because those were the names
- *      used in the publication.
+ *  http://www.apache.org/licenses/LICENSE-2.0
  *
- *      Please read the file sha1.c for more information.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
+ *  This file is part of mbed TLS (https://tls.mbed.org)
+ */
+ // Modifications were made.
+/**
+ * \brief          SHA-1 context structure
  */
 
-#ifndef _SHA1_H_
-#define _SHA1_H_
+#include <3ds.h>
 
-/* 
- *  This structure will hold context information for the hashing
- *  operation
- */
-typedef struct SHA1Context
+typedef struct
 {
-    unsigned Message_Digest[5]; /* Message Digest (output)          */
+    u32 total[2];          /*!< number of bytes processed  */
+    u32 state[5];          /*!< intermediate digest state  */
+    unsigned char buffer[64];   /*!< data block being processed */
+}
+mbedtls_sha1_context;
 
-    unsigned Length_Low;        /* Message length in bits           */
-    unsigned Length_High;       /* Message length in bits           */
-
-    unsigned char Message_Block[64]; /* 512-bit message blocks      */
-    int Message_Block_Index;    /* Index into message block array   */
-
-    int Computed;               /* Is the digest computed?          */
-    int Corrupted;              /* Is the message digest corruped?  */
-} SHA1Context;
-
-/*
- *  Function Prototypes
+/**
+ * \brief          Initialize SHA-1 context
+ *
+ * \param ctx      SHA-1 context to be initialized
  */
-void SHA1Reset(SHA1Context *);
-int SHA1Result(SHA1Context *);
-void SHA1Input( SHA1Context *,
-                const unsigned char *,
-                unsigned);
+void mbedtls_sha1_init( mbedtls_sha1_context *ctx );
 
-#endif
+/**
+ * \brief          Clear SHA-1 context
+ *
+ * \param ctx      SHA-1 context to be cleared
+ */
+void mbedtls_sha1_free( mbedtls_sha1_context *ctx );
+
+/**
+ * \brief          Clone (the state of) a SHA-1 context
+ *
+ * \param dst      The destination context
+ * \param src      The context to be cloned
+ */
+void mbedtls_sha1_clone( mbedtls_sha1_context *dst,
+                         const mbedtls_sha1_context *src );
+
+/**
+ * \brief          SHA-1 context setup
+ *
+ * \param ctx      context to be initialized
+ */
+void mbedtls_sha1_starts( mbedtls_sha1_context *ctx );
+
+/**
+ * \brief          SHA-1 process buffer
+ *
+ * \param ctx      SHA-1 context
+ * \param input    buffer holding the  data
+ * \param ilen     length of the input data
+ */
+void mbedtls_sha1_update( mbedtls_sha1_context *ctx, const unsigned char *input, __SIZE_TYPE__ ilen );
+
+/**
+ * \brief          SHA-1 final digest
+ *
+ * \param ctx      SHA-1 context
+ * \param output   SHA-1 checksum result
+ */
+void mbedtls_sha1_finish( mbedtls_sha1_context *ctx, unsigned char output[20] );
+
+/* Internal use */
+void mbedtls_sha1_process( mbedtls_sha1_context *ctx, const unsigned char data[64] );

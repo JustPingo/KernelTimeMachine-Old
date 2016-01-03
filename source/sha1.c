@@ -1,371 +1,344 @@
 /*
- *  sha1.c
+ *  FIPS-180-1 compliant SHA-1 implementation
  *
- *  Copyright (C) 1998, 2009
- *  Paul E. Jones <paulej@packetizer.com>
- *  All Rights Reserved
+ *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
+ *  SPDX-License-Identifier: Apache-2.0
  *
- *****************************************************************************
- *  $Id: sha1.c 12 2009-06-22 19:34:25Z paulej $
- *****************************************************************************
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *  not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
  *
- *  Description:
- *      This file implements the Secure Hashing Standard as defined
- *      in FIPS PUB 180-1 published April 17, 1995.
+ *  http://www.apache.org/licenses/LICENSE-2.0
  *
- *      The Secure Hashing Standard, which uses the Secure Hashing
- *      Algorithm (SHA), produces a 160-bit message digest for a
- *      given data stream.  In theory, it is highly improbable that
- *      two messages will produce the same message digest.  Therefore,
- *      this algorithm can serve as a means of providing a "fingerprint"
- *      for a message.
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
  *
- *  Portability Issues:
- *      SHA-1 is defined in terms of 32-bit "words".  This code was
- *      written with the expectation that the processor has at least
- *      a 32-bit machine word size.  If the machine word size is larger,
- *      the code should still function properly.  One caveat to that
- *      is that the input functions taking characters and character
- *      arrays assume that only 8 bits of information are stored in each
- *      character.
+ *  This file is part of mbed TLS (https://tls.mbed.org)
+ */
+  // Modifications were made.
+/*
+ *  The SHA-1 standard was published by NIST in 1993.
  *
- *  Caveats:
- *      SHA-1 is designed to work with messages less than 2^64 bits
- *      long. Although SHA-1 allows a message digest to be generated for
- *      messages of any number of bits less than 2^64, this
- *      implementation only works with messages with a length that is a
- *      multiple of the size of an 8-bit character.
- *
+ *  http://www.itl.nist.gov/fipspubs/fip180-1.htm
  */
 
 #include "sha1.h"
 
+#include <inttypes.h>
+#include <string.h>
+#include <stdio.h>
+#include <3ds.h>
+
+/* Implementation that should never be optimized out by the compiler */
+static void mbedtls_zeroize( void *v, __SIZE_TYPE__ n ) {
+    volatile unsigned char *p = v; while( n-- ) *p++ = 0;
+}
+
 /*
- *  Define the circular shift macro
+ * 32-bit integer manipulation macros (big endian)
  */
-#define SHA1CircularShift(bits,word) \
-                ((((word) << (bits)) & 0xFFFFFFFF) | \
-                ((word) >> (32-(bits))))
+#ifndef GET_UINT32_BE
+#define GET_UINT32_BE(n,b,i)                            \
+{                                                       \
+    (n) = ( (u32) (b)[(i)    ] << 24 )             \
+        | ( (u32) (b)[(i) + 1] << 16 )             \
+        | ( (u32) (b)[(i) + 2] <<  8 )             \
+        | ( (u32) (b)[(i) + 3]       );            \
+}
+#endif
 
-/* Function prototypes */
-void SHA1ProcessMessageBlock(SHA1Context *);
-void SHA1PadMessage(SHA1Context *);
+#ifndef PUT_UINT32_BE
+#define PUT_UINT32_BE(n,b,i)                            \
+{                                                       \
+    (b)[(i)    ] = (unsigned char) ( (n) >> 24 );       \
+    (b)[(i) + 1] = (unsigned char) ( (n) >> 16 );       \
+    (b)[(i) + 2] = (unsigned char) ( (n) >>  8 );       \
+    (b)[(i) + 3] = (unsigned char) ( (n)       );       \
+}
+#endif
 
-/*  
- *  SHA1Reset
- *
- *  Description:
- *      This function will initialize the SHA1Context in preparation
- *      for computing a new message digest.
- *
- *  Parameters:
- *      context: [in/out]
- *          The context to reset.
- *
- *  Returns:
- *      Nothing.
- *
- *  Comments:
- *
- */
-void SHA1Reset(SHA1Context *context)
+void mbedtls_sha1_init( mbedtls_sha1_context *ctx )
 {
-    context->Length_Low             = 0;
-    context->Length_High            = 0;
-    context->Message_Block_Index    = 0;
-
-    context->Message_Digest[0]      = 0x67452301;
-    context->Message_Digest[1]      = 0xEFCDAB89;
-    context->Message_Digest[2]      = 0x98BADCFE;
-    context->Message_Digest[3]      = 0x10325476;
-    context->Message_Digest[4]      = 0xC3D2E1F0;
-
-    context->Computed   = 0;
-    context->Corrupted  = 0;
+    memset( ctx, 0, sizeof( mbedtls_sha1_context ) );
 }
 
-/*  
- *  SHA1Result
- *
- *  Description:
- *      This function will return the 160-bit message digest into the
- *      Message_Digest array within the SHA1Context provided
- *
- *  Parameters:
- *      context: [in/out]
- *          The context to use to calculate the SHA-1 hash.
- *
- *  Returns:
- *      1 if successful, 0 if it failed.
- *
- *  Comments:
- *
- */
-int SHA1Result(SHA1Context *context)
+void mbedtls_sha1_free( mbedtls_sha1_context *ctx )
 {
-
-    if (context->Corrupted)
-    {
-        return 0;
-    }
-
-    if (!context->Computed)
-    {
-        SHA1PadMessage(context);
-        context->Computed = 1;
-    }
-
-    return 1;
-}
-
-/*  
- *  SHA1Input
- *
- *  Description:
- *      This function accepts an array of octets as the next portion of
- *      the message.
- *
- *  Parameters:
- *      context: [in/out]
- *          The SHA-1 context to update
- *      message_array: [in]
- *          An array of characters representing the next portion of the
- *          message.
- *      length: [in]
- *          The length of the message in message_array
- *
- *  Returns:
- *      Nothing.
- *
- *  Comments:
- *
- */
-void SHA1Input(     SHA1Context         *context,
-                    const unsigned char *message_array,
-                    unsigned            length)
-{
-    if (!length)
-    {
+    if( ctx == NULL )
         return;
-    }
 
-    if (context->Computed || context->Corrupted)
-    {
-        context->Corrupted = 1;
+    mbedtls_zeroize( ctx, sizeof( mbedtls_sha1_context ) );
+}
+
+void mbedtls_sha1_clone( mbedtls_sha1_context *dst,
+                         const mbedtls_sha1_context *src )
+{
+    *dst = *src;
+}
+
+/*
+ * SHA-1 context setup
+ */
+void mbedtls_sha1_starts( mbedtls_sha1_context *ctx )
+{
+    ctx->total[0] = 0;
+    ctx->total[1] = 0;
+
+    ctx->state[0] = 0x67452301;
+    ctx->state[1] = 0xEFCDAB89;
+    ctx->state[2] = 0x98BADCFE;
+    ctx->state[3] = 0x10325476;
+    ctx->state[4] = 0xC3D2E1F0;
+}
+
+#if !defined(MBEDTLS_SHA1_PROCESS_ALT)
+void mbedtls_sha1_process( mbedtls_sha1_context *ctx, const unsigned char data[64] )
+{
+    u32 temp, W[16], A, B, C, D, E;
+
+    GET_UINT32_BE( W[ 0], data,  0 );
+    GET_UINT32_BE( W[ 1], data,  4 );
+    GET_UINT32_BE( W[ 2], data,  8 );
+    GET_UINT32_BE( W[ 3], data, 12 );
+    GET_UINT32_BE( W[ 4], data, 16 );
+    GET_UINT32_BE( W[ 5], data, 20 );
+    GET_UINT32_BE( W[ 6], data, 24 );
+    GET_UINT32_BE( W[ 7], data, 28 );
+    GET_UINT32_BE( W[ 8], data, 32 );
+    GET_UINT32_BE( W[ 9], data, 36 );
+    GET_UINT32_BE( W[10], data, 40 );
+    GET_UINT32_BE( W[11], data, 44 );
+    GET_UINT32_BE( W[12], data, 48 );
+    GET_UINT32_BE( W[13], data, 52 );
+    GET_UINT32_BE( W[14], data, 56 );
+    GET_UINT32_BE( W[15], data, 60 );
+
+#define S(x,n) ((x << n) | ((x & 0xFFFFFFFF) >> (32 - n)))
+
+#define R(t)                                            \
+(                                                       \
+    temp = W[( t -  3 ) & 0x0F] ^ W[( t - 8 ) & 0x0F] ^ \
+           W[( t - 14 ) & 0x0F] ^ W[  t       & 0x0F],  \
+    ( W[t & 0x0F] = S(temp,1) )                         \
+)
+
+#define P(a,b,c,d,e,x)                                  \
+{                                                       \
+    e += S(a,5) + F(b,c,d) + K + x; b = S(b,30);        \
+}
+
+    A = ctx->state[0];
+    B = ctx->state[1];
+    C = ctx->state[2];
+    D = ctx->state[3];
+    E = ctx->state[4];
+
+#define F(x,y,z) (z ^ (x & (y ^ z)))
+#define K 0x5A827999
+
+    P( A, B, C, D, E, W[0]  );
+    P( E, A, B, C, D, W[1]  );
+    P( D, E, A, B, C, W[2]  );
+    P( C, D, E, A, B, W[3]  );
+    P( B, C, D, E, A, W[4]  );
+    P( A, B, C, D, E, W[5]  );
+    P( E, A, B, C, D, W[6]  );
+    P( D, E, A, B, C, W[7]  );
+    P( C, D, E, A, B, W[8]  );
+    P( B, C, D, E, A, W[9]  );
+    P( A, B, C, D, E, W[10] );
+    P( E, A, B, C, D, W[11] );
+    P( D, E, A, B, C, W[12] );
+    P( C, D, E, A, B, W[13] );
+    P( B, C, D, E, A, W[14] );
+    P( A, B, C, D, E, W[15] );
+    P( E, A, B, C, D, R(16) );
+    P( D, E, A, B, C, R(17) );
+    P( C, D, E, A, B, R(18) );
+    P( B, C, D, E, A, R(19) );
+
+#undef K
+#undef F
+
+#define F(x,y,z) (x ^ y ^ z)
+#define K 0x6ED9EBA1
+
+    P( A, B, C, D, E, R(20) );
+    P( E, A, B, C, D, R(21) );
+    P( D, E, A, B, C, R(22) );
+    P( C, D, E, A, B, R(23) );
+    P( B, C, D, E, A, R(24) );
+    P( A, B, C, D, E, R(25) );
+    P( E, A, B, C, D, R(26) );
+    P( D, E, A, B, C, R(27) );
+    P( C, D, E, A, B, R(28) );
+    P( B, C, D, E, A, R(29) );
+    P( A, B, C, D, E, R(30) );
+    P( E, A, B, C, D, R(31) );
+    P( D, E, A, B, C, R(32) );
+    P( C, D, E, A, B, R(33) );
+    P( B, C, D, E, A, R(34) );
+    P( A, B, C, D, E, R(35) );
+    P( E, A, B, C, D, R(36) );
+    P( D, E, A, B, C, R(37) );
+    P( C, D, E, A, B, R(38) );
+    P( B, C, D, E, A, R(39) );
+
+#undef K
+#undef F
+
+#define F(x,y,z) ((x & y) | (z & (x | y)))
+#define K 0x8F1BBCDC
+
+    P( A, B, C, D, E, R(40) );
+    P( E, A, B, C, D, R(41) );
+    P( D, E, A, B, C, R(42) );
+    P( C, D, E, A, B, R(43) );
+    P( B, C, D, E, A, R(44) );
+    P( A, B, C, D, E, R(45) );
+    P( E, A, B, C, D, R(46) );
+    P( D, E, A, B, C, R(47) );
+    P( C, D, E, A, B, R(48) );
+    P( B, C, D, E, A, R(49) );
+    P( A, B, C, D, E, R(50) );
+    P( E, A, B, C, D, R(51) );
+    P( D, E, A, B, C, R(52) );
+    P( C, D, E, A, B, R(53) );
+    P( B, C, D, E, A, R(54) );
+    P( A, B, C, D, E, R(55) );
+    P( E, A, B, C, D, R(56) );
+    P( D, E, A, B, C, R(57) );
+    P( C, D, E, A, B, R(58) );
+    P( B, C, D, E, A, R(59) );
+
+#undef K
+#undef F
+
+#define F(x,y,z) (x ^ y ^ z)
+#define K 0xCA62C1D6
+
+    P( A, B, C, D, E, R(60) );
+    P( E, A, B, C, D, R(61) );
+    P( D, E, A, B, C, R(62) );
+    P( C, D, E, A, B, R(63) );
+    P( B, C, D, E, A, R(64) );
+    P( A, B, C, D, E, R(65) );
+    P( E, A, B, C, D, R(66) );
+    P( D, E, A, B, C, R(67) );
+    P( C, D, E, A, B, R(68) );
+    P( B, C, D, E, A, R(69) );
+    P( A, B, C, D, E, R(70) );
+    P( E, A, B, C, D, R(71) );
+    P( D, E, A, B, C, R(72) );
+    P( C, D, E, A, B, R(73) );
+    P( B, C, D, E, A, R(74) );
+    P( A, B, C, D, E, R(75) );
+    P( E, A, B, C, D, R(76) );
+    P( D, E, A, B, C, R(77) );
+    P( C, D, E, A, B, R(78) );
+    P( B, C, D, E, A, R(79) );
+
+#undef K
+#undef F
+
+    ctx->state[0] += A;
+    ctx->state[1] += B;
+    ctx->state[2] += C;
+    ctx->state[3] += D;
+    ctx->state[4] += E;
+}
+#endif /* !MBEDTLS_SHA1_PROCESS_ALT */
+
+/*
+ * SHA-1 process buffer
+ */
+void mbedtls_sha1_update( mbedtls_sha1_context *ctx, const unsigned char *input, __SIZE_TYPE__ ilen )
+{
+    __SIZE_TYPE__ fill;
+    u32 left;
+
+    if( ilen == 0 )
         return;
-    }
 
-    while(length-- && !context->Corrupted)
+    left = ctx->total[0] & 0x3F;
+    fill = 64 - left;
+
+    ctx->total[0] += (u32) ilen;
+    ctx->total[0] &= 0xFFFFFFFF;
+
+    if( ctx->total[0] < (u32) ilen )
+        ctx->total[1]++;
+
+    if( left && ilen >= fill )
     {
-        context->Message_Block[context->Message_Block_Index++] =
-                                                (*message_array & 0xFF);
-
-        context->Length_Low += 8;
-        /* Force it to 32 bits */
-        context->Length_Low &= 0xFFFFFFFF;
-        if (context->Length_Low == 0)
-        {
-            context->Length_High++;
-            /* Force it to 32 bits */
-            context->Length_High &= 0xFFFFFFFF;
-            if (context->Length_High == 0)
-            {
-                /* Message is too long */
-                context->Corrupted = 1;
-            }
-        }
-
-        if (context->Message_Block_Index == 64)
-        {
-            SHA1ProcessMessageBlock(context);
-        }
-
-        message_array++;
+        memcpy( (void *) (ctx->buffer + left), input, fill );
+        mbedtls_sha1_process( ctx, ctx->buffer );
+        input += fill;
+        ilen  -= fill;
+        left = 0;
     }
+
+    while( ilen >= 64 )
+    {
+        mbedtls_sha1_process( ctx, input );
+        input += 64;
+        ilen  -= 64;
+    }
+
+    if( ilen > 0 )
+        memcpy( (void *) (ctx->buffer + left), input, ilen );
 }
 
-/*  
- *  SHA1ProcessMessageBlock
- *
- *  Description:
- *      This function will process the next 512 bits of the message
- *      stored in the Message_Block array.
- *
- *  Parameters:
- *      None.
- *
- *  Returns:
- *      Nothing.
- *
- *  Comments:
- *      Many of the variable names in the SHAContext, especially the
- *      single character names, were used because those were the names
- *      used in the publication.
- *         
- *
- */
-void SHA1ProcessMessageBlock(SHA1Context *context)
+static const unsigned char sha1_padding[64] =
 {
-    const unsigned K[] =            /* Constants defined in SHA-1   */      
-    {
-        0x5A827999,
-        0x6ED9EBA1,
-        0x8F1BBCDC,
-        0xCA62C1D6
-    };
-    int         t;                  /* Loop counter                 */
-    unsigned    temp;               /* Temporary word value         */
-    unsigned    W[80];              /* Word sequence                */
-    unsigned    A, B, C, D, E;      /* Word buffers                 */
+ 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 
-    /*
-     *  Initialize the first 16 words in the array W
-     */
-    for(t = 0; t < 16; t++)
-    {
-        W[t] = ((unsigned) context->Message_Block[t * 4]) << 24;
-        W[t] |= ((unsigned) context->Message_Block[t * 4 + 1]) << 16;
-        W[t] |= ((unsigned) context->Message_Block[t * 4 + 2]) << 8;
-        W[t] |= ((unsigned) context->Message_Block[t * 4 + 3]);
-    }
+/*
+ * SHA-1 final digest
+ */
+void mbedtls_sha1_finish( mbedtls_sha1_context *ctx, unsigned char output[20] )
+{
+    u32 last, padn;
+    u32 high, low;
+    unsigned char msglen[8];
 
-    for(t = 16; t < 80; t++)
-    {
-       W[t] = SHA1CircularShift(1,W[t-3] ^ W[t-8] ^ W[t-14] ^ W[t-16]);
-    }
+    high = ( ctx->total[0] >> 29 )
+         | ( ctx->total[1] <<  3 );
+    low  = ( ctx->total[0] <<  3 );
 
-    A = context->Message_Digest[0];
-    B = context->Message_Digest[1];
-    C = context->Message_Digest[2];
-    D = context->Message_Digest[3];
-    E = context->Message_Digest[4];
+    PUT_UINT32_BE( high, msglen, 0 );
+    PUT_UINT32_BE( low,  msglen, 4 );
 
-    for(t = 0; t < 20; t++)
-    {
-        temp =  SHA1CircularShift(5,A) +
-                ((B & C) | ((~B) & D)) + E + W[t] + K[0];
-        temp &= 0xFFFFFFFF;
-        E = D;
-        D = C;
-        C = SHA1CircularShift(30,B);
-        B = A;
-        A = temp;
-    }
+    last = ctx->total[0] & 0x3F;
+    padn = ( last < 56 ) ? ( 56 - last ) : ( 120 - last );
 
-    for(t = 20; t < 40; t++)
-    {
-        temp = SHA1CircularShift(5,A) + (B ^ C ^ D) + E + W[t] + K[1];
-        temp &= 0xFFFFFFFF;
-        E = D;
-        D = C;
-        C = SHA1CircularShift(30,B);
-        B = A;
-        A = temp;
-    }
+    mbedtls_sha1_update( ctx, sha1_padding, padn );
+    mbedtls_sha1_update( ctx, msglen, 8 );
 
-    for(t = 40; t < 60; t++)
-    {
-        temp = SHA1CircularShift(5,A) +
-               ((B & C) | (B & D) | (C & D)) + E + W[t] + K[2];
-        temp &= 0xFFFFFFFF;
-        E = D;
-        D = C;
-        C = SHA1CircularShift(30,B);
-        B = A;
-        A = temp;
-    }
-
-    for(t = 60; t < 80; t++)
-    {
-        temp = SHA1CircularShift(5,A) + (B ^ C ^ D) + E + W[t] + K[3];
-        temp &= 0xFFFFFFFF;
-        E = D;
-        D = C;
-        C = SHA1CircularShift(30,B);
-        B = A;
-        A = temp;
-    }
-
-    context->Message_Digest[0] =
-                        (context->Message_Digest[0] + A) & 0xFFFFFFFF;
-    context->Message_Digest[1] =
-                        (context->Message_Digest[1] + B) & 0xFFFFFFFF;
-    context->Message_Digest[2] =
-                        (context->Message_Digest[2] + C) & 0xFFFFFFFF;
-    context->Message_Digest[3] =
-                        (context->Message_Digest[3] + D) & 0xFFFFFFFF;
-    context->Message_Digest[4] =
-                        (context->Message_Digest[4] + E) & 0xFFFFFFFF;
-
-    context->Message_Block_Index = 0;
+    PUT_UINT32_BE( ctx->state[0], output,  0 );
+    PUT_UINT32_BE( ctx->state[1], output,  4 );
+    PUT_UINT32_BE( ctx->state[2], output,  8 );
+    PUT_UINT32_BE( ctx->state[3], output, 12 );
+    PUT_UINT32_BE( ctx->state[4], output, 16 );
 }
 
-/*  
- *  SHA1PadMessage
- *
- *  Description:
- *      According to the standard, the message must be padded to an even
- *      512 bits.  The first padding bit must be a '1'.  The last 64
- *      bits represent the length of the original message.  All bits in
- *      between should be 0.  This function will pad the message
- *      according to those rules by filling the Message_Block array
- *      accordingly.  It will also call SHA1ProcessMessageBlock()
- *      appropriately.  When it returns, it can be assumed that the
- *      message digest has been computed.
- *
- *  Parameters:
- *      context: [in/out]
- *          The context to pad
- *
- *  Returns:
- *      Nothing.
- *
- *  Comments:
- *
+/*
+ * output = SHA-1( input buffer )
  */
-void SHA1PadMessage(SHA1Context *context)
+void mbedtls_sha1( const unsigned char *input, __SIZE_TYPE__ ilen, unsigned char output[20] )
 {
-    /*
-     *  Check to see if the current message block is too small to hold
-     *  the initial padding bits and length.  If so, we will pad the
-     *  block, process it, and then continue padding into a second
-     *  block.
-     */
-    if (context->Message_Block_Index > 55)
-    {
-        context->Message_Block[context->Message_Block_Index++] = 0x80;
-        while(context->Message_Block_Index < 64)
-        {
-            context->Message_Block[context->Message_Block_Index++] = 0;
-        }
+    mbedtls_sha1_context ctx;
 
-        SHA1ProcessMessageBlock(context);
-
-        while(context->Message_Block_Index < 56)
-        {
-            context->Message_Block[context->Message_Block_Index++] = 0;
-        }
-    }
-    else
-    {
-        context->Message_Block[context->Message_Block_Index++] = 0x80;
-        while(context->Message_Block_Index < 56)
-        {
-            context->Message_Block[context->Message_Block_Index++] = 0;
-        }
-    }
-
-    /*
-     *  Store the message length as the last 8 octets
-     */
-    context->Message_Block[56] = (context->Length_High >> 24) & 0xFF;
-    context->Message_Block[57] = (context->Length_High >> 16) & 0xFF;
-    context->Message_Block[58] = (context->Length_High >> 8) & 0xFF;
-    context->Message_Block[59] = (context->Length_High) & 0xFF;
-    context->Message_Block[60] = (context->Length_Low >> 24) & 0xFF;
-    context->Message_Block[61] = (context->Length_Low >> 16) & 0xFF;
-    context->Message_Block[62] = (context->Length_Low >> 8) & 0xFF;
-    context->Message_Block[63] = (context->Length_Low) & 0xFF;
-
-    SHA1ProcessMessageBlock(context);
+    mbedtls_sha1_init( &ctx );
+    mbedtls_sha1_starts( &ctx );
+    mbedtls_sha1_update( &ctx, input, ilen );
+    mbedtls_sha1_finish( &ctx, output );
+    mbedtls_sha1_free( &ctx );
 }
