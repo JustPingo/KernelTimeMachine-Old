@@ -13,7 +13,7 @@ Please note that there might be some typos and mistakes due to the fact that I'm
 
 The program requires [devkitARM](http://devkitpro.org/)
 
-First, delete the `build` folder. Next run `make` on the KernelTimeMachine main folder. (If you are on Windows, you can use [MinGW](http://www.mingw.org/) or [Cygwin](www.cygwin.com) and on Mac use Xcode or install make [manually](http://stackoverflow.com/questions/2556444/install-make-command-without-already-having-make-mac-os-10-5))
+Run the `make` command on the KernelTimeMachine main folder. (If you are on Windows, you can use [MinGW](http://www.mingw.org/) or [Cygwin](www.cygwin.com) and on Mac use Xcode or install make [manually](http://stackoverflow.com/questions/2556444/install-make-command-without-already-having-make-mac-os-10-5))
 
 ## Installing
 After building, place the files created by make in the 3ds folder on your SD card and launch it through the [homebrew launcher](http://smealum.github.io/3ds/).
