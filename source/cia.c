@@ -63,7 +63,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 	if (res != 0) return false;
 
 	if (ciaInfo.titleID == 0x0004013800000002LL || ciaInfo.titleID == 0x0004013820000002LL) { // If you're installing NATIVE_FIRM
-		AM_InstallNativeFirm();
+		AM_InstallFirm(ciaInfo.titleID);
 	}
 
 	return true;
