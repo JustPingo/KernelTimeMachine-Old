@@ -1,4 +1,7 @@
 build/
+downgrade/
+tmp/
+*.rar
 *.3dsx
 *.elf
 *.smdh
