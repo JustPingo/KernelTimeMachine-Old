@@ -4,6 +4,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "ttp.h"
+#include "utils.h"
 
 // KernelTimeMachine
 // Safe CIA manager
