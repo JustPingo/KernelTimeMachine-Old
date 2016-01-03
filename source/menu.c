@@ -41,9 +41,6 @@ u8 downgradeMenu() {
 			printf("Press (A) to proceed.");
 		}
 
-		gspWaitForVBlank();
-		gfxFlushBuffers();
-		gfxSwapBuffers();
 		while (aptMainLoop() && !canContinue && shouldNotChange) {
 
 			if (timer > 1) timer--;
@@ -282,23 +279,21 @@ u8 downgradeMenu() {
 
 	u8 isBatteryCharging;
 	u8 batteryLevel;
+	u8 latestCharging = 0;
+	u8 latestLevel = 0;
 
 	canContinue = false;
+
+	shouldNotChange = true;
 
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
 		clearScreen();
 
-		hidScanInput();
-		kDown = hidKeysDown();
-
 		PTMU_GetBatteryChargeState(&isBatteryCharging);
 		PTMU_GetBatteryLevel(&batteryLevel);
 
 		printf("Please leave your console charging during the process.\n\n");
-
-		if (kDown & KEY_B)
-			return 1;
 
 		if (isBatteryCharging == 0) {
 			printf("Your console is not charging. Please leave it charging.\n\n");
@@ -307,8 +302,6 @@ u8 downgradeMenu() {
 				printf("Your console is now ready for the downgrade process.\n\n");
 				printf("AFTER THAT POINT YOU MUST NOT TURN OFF THE CONSOLE OR REMOVE\nTHE SD CARD OR IT WILL BRICK!\n\n");
 				printf("Press (A) to proceed.\n");
-				if (kDown & KEY_A)
-					canContinue = true;
 			} else {
 				printf("To be extra sure, please leave it charging a bit.\n");
 				printf("Current charging level: %i of 3 needed\n\n", batteryLevel);
@@ -317,9 +310,31 @@ u8 downgradeMenu() {
 
 		printf("Press (B) to exit.");
 
-		gspWaitForVBlank();
-		gfxFlushBuffers();
-		gfxSwapBuffers();
+		while (aptMainLoop() && !canContinue && shouldNotChange) {
+
+			hidScanInput();
+			kDown = hidKeysDown();
+
+			PTMU_GetBatteryChargeState(&isBatteryCharging);
+			PTMU_GetBatteryLevel(&batteryLevel);
+
+			if (kDown & KEY_B)
+				return 1;
+
+			if (batteryLevel >= 3 && isBatteryCharging != 0 && kDown & KEY_A)
+				canContinue = true;
+
+			if (batteryLevel != latestLevel) {
+				shouldNotChange = false;
+				latestLevel = batteryLevel;
+			}
+
+			if (isBatteryCharging != latestCharging) {
+				shouldNotChange = false;
+				latestCharging = isBatteryCharging;
+			}
+
+		}
 	}
 
 	if (!canContinue) return 0;
@@ -349,7 +364,7 @@ u8 downgradeMenu() {
 
 	while (!isDone) {
 		gspWaitForVBlank();
-		gfxFlushBuffers();
+		gfxFlushBuffers(); // Placeholder for future animation
 		gfxSwapBuffers();
 	}
 

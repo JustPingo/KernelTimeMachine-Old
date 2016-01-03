@@ -9,21 +9,22 @@
 #include "cia.h"
 #include "ttp.h"
 #include "menu.h"
+#include "libsu.h"
 
 // KernelTimeMachine
 // Safe CIA manager
 // Licensed under GNU General Public License (GPL)
 // Check out https://www.gnu.org/licenses/gpl.html
 
-Handle am;
-
 int main() {
+	suInit();
 	gfxInitDefault();
 	consoleInit(GFX_TOP, &topConsole);
 	consoleSelect(&topConsole);
 
 	cfguInit();
 	fsInit();
+	amInit();
 
 	fbTopLeft = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL);
 	fbTopRight = gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, NULL, NULL);
