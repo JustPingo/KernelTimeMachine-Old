@@ -1,4 +1,4 @@
-# Kernel Time Machine
+# KernelTimeMachine
 ![Project Status](https://img.shields.io/badge/status-in%20progress-yellow.svg)
 
 Kernel Time Machine is a work in progress tool to downgrade firmware on the 3DS safely using TPP files.
