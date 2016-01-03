@@ -25,6 +25,8 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 	FSUSER_CloseArchive(&archive);
 	if (res != 0) return false;
 
+	if (ciaInfo.titleID == 0x000400102002CA00) return true; // ignore that bricking title
+
 	FILE* file = fopen(path, "rb");
 	if (file == NULL) return false;
 
