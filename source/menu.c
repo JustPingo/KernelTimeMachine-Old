@@ -95,7 +95,7 @@ u8 downgradeMenu() {
 
 	canContinue = false;
 
-	Handle packagesDir;
+	/*Handle packagesDir;
 	//FS_Archive fsarchive;
 	FS_DirectoryEntry* entries;
 	u32 actualAmount = 0;
@@ -183,7 +183,7 @@ u8 downgradeMenu() {
 
 	chosenPack = entries[currentPack];
 	FSDIR_Close(packagesDir);
-	free(entries);
+	free(entries);*/
 
 	canContinue = false;
 	timer = 0;
@@ -195,7 +195,7 @@ u8 downgradeMenu() {
 	printf("(%s family)\n", isNew ? "New3DS" : "Old3DS");
 	printf("Detected region: %s\n", regionName);
 	//printf("Detected firmware: %i.%i.%i\n", major, minor, rev);
-	printf("Downgrade pack: %s\n\n", chosenPack.shortName);
+	printf("Downgrade pack: %s\n\n", /*chosenPack.shortName*/"/downgrade.ttp");
 
 	bool canGoAhead = false;
 	if (regionName == "UNKNOWN") {
@@ -215,12 +215,12 @@ u8 downgradeMenu() {
 				if (timer == 0) {
 					printf("Press (A) to confirm.\n");
 					canGoAhead = true;
-				} else timer--;
+				}
 			}
 		}
 	}
 
-	printf("Press (LEFT) to choose another downgrade pack.\n");
+	//printf("Press (LEFT) to choose another downgrade pack.\n");
 	printf("Press (B) to exit.");
 
 	while (aptMainLoop() && !canContinue) {
@@ -232,8 +232,8 @@ u8 downgradeMenu() {
 		if (kDown & KEY_A && canGoAhead)
 			canContinue = true;
 
-		if (kDown & KEY_LEFT)
-			goto packChoice;
+		//if (kDown & KEY_LEFT)
+		//	goto packChoice;
 
 		gspWaitForVBlank();
 		gfxFlushBuffers();
