@@ -43,7 +43,7 @@ int error(char* msg, u8 errorCode) {
 	return 0;
 }
 
-bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console. (needs sha1.c)
+u32 checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console. (needs sha1.c)
 
 	// Just figured out there's a cleaner syntax to perform sdmc reads. Note to future.
 	union {
@@ -52,24 +52,25 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 	} longChar; // easy way to convert u8[4] to u32
 
 	Handle file;
-	FS_Archive archive = {0, {PATH_EMPTY, 0, 0}};
+	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
 	FSUSER_OpenArchive(&archive);
 	FSUSER_OpenFile(&file, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
+	FSUSER_CloseArchive(&archive);
 
 	u32 bytesRead = 0;
 	char* buf = malloc(0x3);
-	FSFILE_Read(file, &bytesRead, 0x0, buf, 0x3);
-	if (strcmp(buf, "ttp") != 0) { free(buf); return false; }
+	Result res = FSFILE_Read(file, &bytesRead, 0x0, buf, 0x3); // 0xD8E007F7 exception (Invalid handle)
+	if (buf[0] != 84 || buf[1] != 84 || buf[2] != 80) { free(buf); return res; }
 	free(buf); // not sure if freeing all the time is needed, maybe allocating 0x14 since the beginning should be enough
 
 	buf = malloc(0x1);
 	FSFILE_Read(file, &bytesRead, 0x3, buf, 0x1);
-	if (*buf != region && buf != 0xFF) { free(buf); return false; }
+	if (*buf != region && buf != 0xFF) { free(buf); return 2; }
 	//free(buf);
 
 	//buf = malloc(0x1);
 	FSFILE_Read(file, &bytesRead, 0x4, buf, 0x1);
-	if (*buf != (char)isNew && buf != 0xFF) { free(buf); return false; }
+	if (*buf != (char)isNew && buf != 0xFF) { free(buf); return 3; }
 	free(buf);
 
 	// SHA-1 check
@@ -99,9 +100,9 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 	free(block);
 
 	FSFILE_Close(file);
-	FSUSER_CloseArchive(&archive);
+	//FSUSER_CloseArchive(&archive);
 
-	if (!SHA1Result(&context)) { free(buf); return false; }
+	if (!SHA1Result(&context)) { free(buf); return 4; }
 
 	union {
 		char c;
@@ -113,17 +114,17 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	for (i = 0; i < 5; i++) {
 		if (context.Message_Digest[i] != shaBytes.i[i]) 
-			return false;
+			return 5;
 	}
 
-	return true;
+	return 6;
 
 }
 
 bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 
 	Result res;
-	FS_Archive archive = {0, {PATH_EMPTY, 0, 0}};
+	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
 	FSUSER_OpenArchive(&archive);
 	printf("Installing %s...\n", name);
 	Handle ciaHandle;
@@ -157,7 +158,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name) {
 	fseek(file, 0, SEEK_SET);
 	u32 blockAmount = size / 0x160000; // Finds how many blocks of 4MB you have in the file
 	char* block = malloc(0x160000);
-	u32* bytesWritten;
+	u32* bytesWritten = 0;
 	for (i = 0; i < blockAmount; i++) {
 		fread(block, 1, 0x160000, file);
 		FSFILE_Write(ciaHandle, bytesWritten, 0x160000*i, block, 0x160000, 0);
@@ -271,42 +272,46 @@ void installTTPthread() {
 u8 downgradeMenu() {
 	Result res;
 	u32 kDown;
-	u8 timer = 255;
+	u16 timer = 255;
+	bool shouldNotChange = true;
 	bool canContinue = false;
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
 		clearScreen();
-
 		printf("FIRMWARE DOWNGRADE\n\n");
 		printf("WARNING!\n");
 		printf("YOU ARE ENTERING A DANGEROUS PROCESS!\n");
 		printf("Please read those instructions\nbefore trying anything.\n\n");
-
 		printf("DO NOT turn off you console during\nthe process: it WILL brick.\n");
 		printf("DO NOT get to HomebrewMenu during\nthe process: it WILL brick.\n");
 		printf("DO NOT remove the SD card during\nthe process: it WILL brick.\n");
 		printf("DO NOT throw off your 3DS during\nthe process: it WILL break.\n");
 		printf("PLUG your charger in, and have\nsome energy in your battery.\n\n");
-
 		printf("Press (B) to get back.\n");
-		if (timer != 0) {
-			printf("Please read the instructions to continue.");
-			timer--; 
+		
+		if (timer > 1) {
+			printf("Please read the instructions to continue.\n\n");
 		} else { 
 			printf("Press (A) to proceed.");
 		}
-
+		
 		gspWaitForVBlank();
 		gfxFlushBuffers();
 		gfxSwapBuffers();
+		while (aptMainLoop() && !canContinue && shouldNotChange) {
 
-		hidScanInput();
-		kDown = hidKeysDown();
-		if (kDown & KEY_B)
-			return 1;
+			if (timer > 1) timer--;
+			else { if (timer == 1) shouldNotChange = false; }
 
-		if (kDown & KEY_A && timer == 0)
-			canContinue = true;
+			hidScanInput();
+			kDown = hidKeysDown();
+			if (kDown & KEY_B)
+				return 1;
+			if ((kDown & KEY_A) && timer == 0)
+				canContinue = true;
+		}
+		shouldNotChange = true;
+		timer = 0;
 	}
 
 	if (!canContinue) return 0;
@@ -348,27 +353,29 @@ u8 downgradeMenu() {
 	canContinue = false;
 
 	Handle packagesDir;
-	FS_Archive fsarchive;
+	//FS_Archive fsarchive;
 	FS_DirectoryEntry* entries;
-	u32 actualAmount;
+	u32 actualAmount = 0;
 	u8 currentPack;
 	bool showNot;
 	FS_DirectoryEntry chosenPack;
 
-packChoice: // despite common belief, gotoes are great when you're not doing the fuck with the memory
+packChoice: ; // despite common belief, gotoes are great when you're not doing the fuck with the memory
+	FS_Archive fsarchive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
+	FSUSER_OpenArchive(&fsarchive);
 	res = FSUSER_OpenDirectory(&packagesDir, fsarchive, fsMakePath(PATH_ASCII, "/downgrade"));
+	FSUSER_CloseArchive(&fsarchive);
 
 	//I have no idea if this works correctly, apparently you can't set it on the same line, pointers when referencing are redundant
 	entries = malloc(16 * sizeof(FS_DirectoryEntry));
 	
 	res = FSDIR_Read(packagesDir, &actualAmount, 16, entries);
 	if (actualAmount == 0) {
+		consoleClear();
+		clearScreen();
+
+		printf("No file found.\n\nPress (B) to exit.\n\n%x", res);
 		while (aptMainLoop() && !canContinue) {
-			consoleClear();
-			clearScreen();
-
-			printf("No file found.\n\nPress (B) to exit.");
-
 			hidScanInput();
 			kDown = hidKeysDown();
 			if (kDown & KEY_B) {
@@ -385,34 +392,50 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 
 	currentPack = 0;
 	showNot = false;
+	shouldNotChange = true;
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
 		clearScreen();
 
-		printf("Please choose the downgrade pack you want to install.\n\n");
+		printf("Please choose the downgrade pack\nyou want to install.\n\n");
 
 		printf(" < %s >\n", entries[currentPack].shortName);
 
-		hidScanInput();
-		kDown = hidKeysDown();
-		if (kDown & KEY_LEFT) {
-			showNot = false;
-			if (currentPack == 0) currentPack = actualAmount-1;
-			else currentPack--;
-		} else if (kDown & KEY_RIGHT) {
-			showNot = false;
-			if (currentPack == actualAmount-1) currentPack = 0;
-			else currentPack++;
-		} else if (kDown & KEY_X) {
-			if (entries[currentPack].shortExt != ".ttp") showNot = true;
-			else canContinue = true;
-		}
-
 		printf("%s\nUse (LEFT) and (RIGHT) to choose.\nPress (X) to confirm.", (showNot ? "Not a Time Traveller Package!\n" : ""));
 
-		gspWaitForVBlank();
-		gfxFlushBuffers();
-		gfxSwapBuffers();
+		//printf("\n\n%i\n%i\n%i\n%i", entries[currentPack].shortExt[0], entries[currentPack].shortExt[1] ,entries[currentPack].shortExt[2], entries[currentPack].shortExt[3]);
+
+		while (aptMainLoop() && !canContinue && shouldNotChange) {
+			hidScanInput();
+			kDown = hidKeysDown();
+			if (kDown & KEY_B) {
+				free(entries);
+				return 1;
+			}
+
+			if (kDown & KEY_LEFT) {
+				showNot = false;
+				shouldNotChange = false;
+				if (currentPack == 0) currentPack = actualAmount-1;
+				else currentPack--;
+			} else if (kDown & KEY_RIGHT) {
+				showNot = false;
+				shouldNotChange = false;
+				if (currentPack == actualAmount-1) currentPack = 0;
+				else currentPack++;
+			} else if (kDown & KEY_X) {
+				shouldNotChange = false;
+				if (entries[currentPack].shortExt[0] != 84 || entries[currentPack].shortExt[1] != 84 || entries[currentPack].shortExt[2] != 80 || entries[currentPack].shortExt[3] != 0)
+					showNot = true; // shortExt != "TTP"
+				else canContinue = true;
+			}
+
+
+			gspWaitForVBlank();
+			gfxFlushBuffers();
+			gfxSwapBuffers();
+		}
+		shouldNotChange = true;
 	}
 
 	chosenPack = entries[currentPack];
@@ -420,50 +443,54 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 	free(entries);
 
 	canContinue = false;
-	timer = 100;
+	timer = 0;
+
+	consoleClear();
+	clearScreen();
+
+	printf("Detected model: %s ", modelName);
+	printf("(%s family)\n", isNew ? "New3DS" : "Old3DS");
+	printf("Detected region: %s\n", regionName);
+	//printf("Detected firmware: %i.%i.%i\n", major, minor, rev);
+	printf("Downgrade pack: %s\n\n", chosenPack.shortName);
+
+	bool canGoAhead = false;
+	if (regionName == "UNKNOWN") {
+		printf("Woops! Something weird happened with the region.\nREGIONID: %i\n", region);
+		printf("Please contact the community for more info.\n\n");
+	} else {
+		if ((region == 5 || region == 6) && isNew) {
+			printf("Sorry, we didn't know there were N3DS in your region.\nREGIONID: %i\n", region);
+			printf("Please contact the community for more info.\n\n");
+		} else {
+			if (modelName == "UNKNOWN") {
+				printf("Woops! Something weird happened with the model.\nMODELID: %i\n", model);
+				printf("Please contact the community for more info.\n\n");
+			} else {
+				printf("Is that correct?\n");
+				printf("In case of error, please exit and contact the community\nfor more information. DO NOT try if there is\nat least one info wrong.\n\n");
+				if (timer == 0) {
+					printf("Press (A) to confirm.\n");
+					canGoAhead = true;
+				} else timer--;
+			}
+		}
+	}
+
+	printf("Press (LEFT) to choose another downgrade pack.\n");
+	printf("Press (B) to exit.");
+
 	while (aptMainLoop() && !canContinue) {
-		consoleClear();
-		clearScreen();		
-
-		printf("Detected model: %s ", modelName);
-		printf("(%s family)\n", isNew ? "New3DS" : "Old3DS");
-		printf("Detected region: %s\n", regionName);
-		printf("Detected firmware: %i.%i.%i\n", major, minor, rev);
-		printf("Downgrade pack: %s\n\n", chosenPack.shortName);
-
 		hidScanInput();
 		kDown = hidKeysDown();
 		if (kDown & KEY_B)
 			return 1;
 
+		if (kDown & KEY_A && canGoAhead)
+			canContinue = true;
+
 		if (kDown & KEY_LEFT)
 			goto packChoice;
-
-		if (regionName == "UNKNOWN") {
-			printf("Woops! Something weird happened with the region.\nREGIONID: %i\n", region);
-			printf("Please contact the community for more info.\n\n");
-		} else {
-			if ((region == 5 || region == 6) && isNew) {
-				printf("Sorry, we didn't know there were N3DS in your region.\nREGIONID: %i\n", region);
-				printf("Please contact the community for more info.\n\n");
-			} else {
-				if (modelName == "UNKNOWN") {
-					printf("Woops! Something weird happened with the model.\nMODELID: %i\n", model);
-					printf("Please contact the community for more info.\n\n");
-				} else {
-					printf("Is that correct?");
-					printf("In case of error, please exit and contact the community\nfor more information. DO NOT try if there is\nat least one info wrong.\n\n");
-					if (timer == 0) {
-						printf("Press (A) to confirm.\n");
-						if (kDown & KEY_A)
-							canContinue = true;
-					} else timer--;
-				}
-			}
-		}
-
-		printf("Press (LEFT) to choose another downgrade pack.\n");
-		printf("Press (B) to exit.");
 
 		gspWaitForVBlank();
 		gfxFlushBuffers();
@@ -475,15 +502,16 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 	char* completePath = malloc(strlen(chosenPack.shortName) + 11);
 	strcpy(completePath, "/downgrade/");
 	strcat(completePath, &(chosenPack.shortName));
-	if (!checkTTP(region, isNew, completePath)) {
+	if (/*!checkTTP(region, isNew, completePath)*/true) {
+		u32 value = checkTTP(region, isNew, completePath);
 		free(completePath);
+
+		consoleClear();
+		clearScreen();
+
+		printf("Your downgrade pack (or KTM itself) seems corrupted or inappropriate.\n");
+		printf("Press (B) to exit.\n\n%x", value);
 		while (aptMainLoop()) {
-			consoleClear();
-			clearScreen();
-
-			printf("Your downgrade pack (or KTM itself) seems corrupted or inappropriate.\n");
-			printf("Press (B) to exit.");
-
 			hidScanInput();
 			kDown = hidKeysDown();
 			if (kDown & KEY_B)
@@ -595,28 +623,25 @@ packChoice: // despite common belief, gotoes are great when you're not doing the
 
 
 u8 mainMenu() {
-	u32 kDown;
+	u32 kDown = 0;
+	bool shouldNotChange = true;
+	gspWaitForVBlank();
+	consoleClear();
+	//clearScreen();
+	printf("KernelTimeMachine\nFix your mistakes\n");
+	printf("-----------------\n\n");
+	printf("(A) Install CIA [WIP]\n");
+	printf("(Y) Downgrade Firmware\n");
+	printf("(L+Y) Downgrade MSET [WIP]\n");
+	printf("(R+Y) Downgrade Browser [WIP]\n");
+	printf("(START) Exit");
+	//gfxFlushBuffers();
+	//gfxSwapBuffers();
 	while (aptMainLoop()) {
-		consoleClear();
-		//clearScreen();
-
-		printf("KernelTimeMachine\nFix your mistakes\n");
-		printf("----------------\n\n");
-		printf("(A) Install CIA [WIP]\n");
-		printf("(Y) Downgrade Firmware\n");
-		printf("(L+Y) Downgrade MSET [WIP]\n");
-		printf("(R+Y) Downgrade Browser [WIP]\n");
-		printf("(START) Exit");
-
-		gspWaitForVBlank();
-		gfxFlushBuffers();
-		gfxSwapBuffers();
-
 		hidScanInput();
 		kDown = hidKeysDown();
 		if (kDown & KEY_START)
 			return 0;
-
 		if (kDown & KEY_Y)
 			if (kDown & KEY_L)
 				return 4;
