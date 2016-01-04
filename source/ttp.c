@@ -11,6 +11,14 @@
 // Licensed under GNU General Public License (GPL)
 // Check out https://www.gnu.org/licenses/gpl.html
 
+#define USELESS92AMOUNT (12)
+u64 uselessTitlesFor92[USELESS92AMOUNT] = { // Latest update: 10.3
+
+	0x0004001B00019002, 0x000400300000B902, 0x0004013000004002, 0x0004003000009502, 0x0004003000009E02, 0x0004001B00010802,
+	0x0004009B00010402, 0x0004013000001A02, 0x0004013000001B02, 0x0004800542383841, 0x00048005484E4441, 0x0004800F484E4841
+
+};
+
 bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity of a TTP file and if it corresponds to the console. (needs sha1.c)
 
 	mbedtls_sha1_context context;
@@ -86,6 +94,23 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 }
 
+void removeUselessTitles(u8 mediatype, u64* installedTitles, u32 amount) {
+
+	printf("Removing useless title...\n");
+	u32 i;
+	u32 y;
+	for (i = 0; i < amount; i++) {
+		for (y = 0; i < USELESS92AMOUNT; i++) {
+			if (installedTitles[i] == uselessTitlesFor92[y]) {
+				if (uselessTitlesFor92[y] >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, uselessTitlesFor92[y]);
+				else AM_DeleteAppTitle(mediatype, uselessTitlesFor92[y]);
+				break;
+			}
+		}
+	}
+
+}
+
 bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip and installCIA)
 
 	Result res;
@@ -149,16 +174,18 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 		strcpy(ciaPath, "/tmp/cias/");
 		strcat(ciaPath, entries[i].shortName);
 		strcat(ciaPath, ".cia");
-		if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
-			if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false)) // Tries to install the CIA 5 times then give up. If it has to give up, that probably means soft-brick.
-				if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
-					if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
-						installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false);
+		if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
+			if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false)) // Tries to install the CIA 5 times then give up. If it has to give up, that probably means soft-brick.
+				if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
+					if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
+						installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false);
 
 		free(ciaPath);
 	}
 
 	installPendingFIRM();
+
+	removeUselessTitles(mediatype, titleIDs, titlesAmount);
 
 	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
 

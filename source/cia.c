@@ -15,7 +15,7 @@ u8 firmPendingMediatype;
 char* firmPendingName;
 bool firmPendingAllowSafeTitles;
 
-bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name, bool allowSafeTitles) {
+bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInstalled, char* name, bool allowSafeTitles) {
 
 	Result res;
 	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
@@ -50,9 +50,8 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, char* name, bo
 	FILE* file = fopen(path, "rb");
 	if (file == NULL) return false;
 
-
 	u32 i;
-	for (i = 0; i < sizeof(installedTitleIDs) / 8; i++) {
+	for (i = 0; i < amountInstalled; i++) {
 		if (installedTitleIDs[i] == ciaInfo.titleID) {
 			if (ciaInfo.titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, ciaInfo.titleID);
 			else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
