@@ -131,7 +131,6 @@ int memchunkhax2()
     Thread delayThread = NULL;
 	Result res;
 	
-	debugPrint("#1 : Allocating buffers...\n");
 	AllocateData* data = (AllocateData*) malloc(sizeof(AllocateData));
 	if(!data) debugPrintError("ERROR : Can't allocate data.\n");
 	data->addr = __ctru_heap + __ctru_heap_size;

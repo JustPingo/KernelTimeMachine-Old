@@ -144,40 +144,21 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 	if (res != 0) { free(titleIDs); return false; }
 
 	char* ciaPath;
-	Handle ciaFileHandle;
-	AM_TitleEntry ciaInfo;
 	for (i = 0; i < actualAmount; i++) {
 		ciaPath = malloc(14 + strlen(entries[i].shortName));
 		strcpy(ciaPath, "/tmp/cias/");
 		strcat(ciaPath, entries[i].shortName);
 		strcat(ciaPath, ".cia");
-		
-		FSUSER_OpenFile(&ciaFileHandle, archive, fsMakePath(PATH_ASCII, ciaPath), FS_OPEN_READ, 0);
-		AM_GetCiaFileInfo(mediatype, &ciaInfo, ciaFileHandle);
-		FSFILE_Close(ciaFileHandle);
-		
-		if (ciaInfo.titleID == 0x0004013800000002LL || ciaInfo.titleID == 0x0004013820000002LL) {
-			if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName))
-				if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName)) // Tries to install the CIA 3 times then give up. If it has to give up, that probably means brick.
-					if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName))
-						return false;
-
-			break;
-		}
-		free(ciaPath);
-	}
-
-	for (i = 0; i < actualAmount; i++) {
-		ciaPath = malloc(14 + strlen(entries[i].shortName));
-		strcpy(ciaPath, "/tmp/cias/");
-		strcat(ciaPath, entries[i].shortName);
-		strcat(ciaPath, ".cia");
-		if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName))
-			if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName)) // Tries to install the CIA 3 times then give up. If it has to give up, that probably means brick.
-				installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName);
+		if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
+			if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false)) // Tries to install the CIA 5 times then give up. If it has to give up, that probably means soft-brick.
+				if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
+					if (!installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false))
+						installCIA(ciaPath, mediatype, titleIDs, entries[i].shortName, false);
 
 		free(ciaPath);
 	}
+
+	installPendingFIRM();
 
 	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
 

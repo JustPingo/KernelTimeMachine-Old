@@ -17,10 +17,21 @@
 // Check out https://www.gnu.org/licenses/gpl.html
 
 int main() {
-	suInit();
 	gfxInitDefault();
 	consoleInit(GFX_TOP, &topConsole);
 	consoleSelect(&topConsole);
+	hidInit();
+	if (suInit() == -1) {
+		printf("\nError while performing kernel11 exploit.\nPlease try again. Press (START) to exit.");
+
+		u32 kDown;
+		while (aptMainLoop()) {
+			hidScanInput();
+			kDown = hidKeysDown();
+			if (kDown & KEY_START) break;
+		}
+		return -1;
+	}
 
 	cfguInit();
 	fsInit();
