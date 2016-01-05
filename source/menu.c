@@ -23,7 +23,7 @@ u8 downgradeMenu() {
 	bool canContinue = false;
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
-		clearScreen();
+		clearScreens();
 		printf("FIRMWARE DOWNGRADE\n\n");
 		printf("WARNING!\n");
 		printf("YOU ARE ENTERING A DANGEROUS PROCESS!\n");
@@ -115,7 +115,7 @@ u8 downgradeMenu() {
 	res = FSDIR_Read(packagesDir, &actualAmount, 16, entries);
 	if (actualAmount == 0) {
 		consoleClear();
-		clearScreen();
+		clearScreens();
 
 		printf("No file found.\n\nPress (B) to exit.\n\n%x", res);
 		while (aptMainLoop() && !canContinue) {
@@ -138,7 +138,7 @@ u8 downgradeMenu() {
 	shouldNotChange = true;
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
-		clearScreen();
+		clearScreens();
 
 		printf("Please choose the downgrade pack\nyou want to install.\n\n");
 
@@ -189,7 +189,7 @@ u8 downgradeMenu() {
 	timer = 0;
 
 	consoleClear();
-	clearScreen();
+	clearScreens();
 
 	printf("Detected model: %s ", modelName);
 	printf("(%s family)\n", isNew ? "New3DS" : "Old3DS");
@@ -198,7 +198,7 @@ u8 downgradeMenu() {
 	printf("Downgrade pack: %s\n\n", /*chosenPack.shortName*/"/downgrade.ttp");
 
 	bool canGoAhead = false;
-	if (regionName == "UNKNOWN") {
+	if (strcmp(regionName, "UNKNOWN") == 0) {
 		printf("Woops! Something weird happened with the region.\nREGIONID: %i\n", region);
 		printf("Please contact the community for more info.\n\n");
 	} else {
@@ -206,7 +206,7 @@ u8 downgradeMenu() {
 			printf("Sorry, we didn't know there were N3DS in your region.\nREGIONID: %i\n", region);
 			printf("Please contact the community for more info.\n\n");
 		} else {
-			if (modelName == "UNKNOWN") {
+			if (strcmp(modelName, "UNKNOWN") == 0) {
 				printf("Woops! Something weird happened with the model.\nMODELID: %i\n", model);
 				printf("Please contact the community for more info.\n\n");
 			} else {
@@ -242,7 +242,7 @@ u8 downgradeMenu() {
 
 	if (!canContinue) return 0;
 	consoleClear();
-	clearScreen();
+	clearScreens();
 	printf("Verifying your downgrade pack...\nThis can take a minute.");
 
 	//char* completePath = malloc(strlen(chosenPack.shortName) + 11);
@@ -261,7 +261,7 @@ u8 downgradeMenu() {
 	//free(asciiName);
 	if (!checkTTP(region, isNew, completePath)) {
 		consoleClear();
-		clearScreen();
+		clearScreens();
 		printf("Your downgrade pack (or KTM itself)\nseems corrupted or inappropriate.\n");
 		printf("Press (B) to exit.");
 		while (aptMainLoop()) {
@@ -288,7 +288,7 @@ u8 downgradeMenu() {
 
 	while (aptMainLoop() && !canContinue) {
 		consoleClear();
-		clearScreen();
+		clearScreens();
 
 		PTMU_GetBatteryChargeState(&isBatteryCharging);
 		PTMU_GetBatteryLevel(&batteryLevel);
@@ -397,7 +397,7 @@ u8 mainMenu() {
 	bool shouldNotChange = true;
 	gspWaitForVBlank();
 	consoleClear();
-	//clearScreen();
+	//clearScreens();
 	printf("KernelTimeMachine\nFix your mistakes\n");
 	printf("-----------------\n\n");
 	printf("(A) Install CIA [WIP]\n");
@@ -413,12 +413,14 @@ u8 mainMenu() {
 		if (kDown & KEY_START)
 			return 0;
 		if (kDown & KEY_Y)
+		{
 			if (kDown & KEY_L)
 				return 4;
 			else if (kDown & KEY_R)
 				return 5;
 			else
 				return 3;
+		}
 	}
 	return 0;
 }
