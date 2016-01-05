@@ -394,7 +394,7 @@ u8 downgradeMenu() {
 
 u8 mainMenu() {
 	u32 kDown = 0;
-	bool shouldNotChange = true;
+	// shouldNotChange = true;
 	gspWaitForVBlank();
 	consoleClear();
 	//clearScreens();

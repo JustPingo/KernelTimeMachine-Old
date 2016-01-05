@@ -210,6 +210,7 @@ volatile bool isDone;
 Handle threadInstallHandle;
 
 void installTTPthread() {
+	// TODO: Problem with (volatile char*) -> (char*)
 	installTTP((char*) threadPath, threadMediatype);
 	isDone = true;
 }
