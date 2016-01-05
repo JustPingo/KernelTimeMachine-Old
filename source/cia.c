@@ -24,11 +24,12 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	Handle ciaFileHandle;
 	AM_TitleEntry ciaInfo;
 
+	// It may be possible to use `FSUSER_OpenFileDirectly`
 	FSUSER_OpenFile(&ciaFileHandle, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
 	res = AM_GetCiaFileInfo(mediatype, &ciaInfo, ciaFileHandle);
 	FSFILE_Close(ciaFileHandle);
 	FSUSER_CloseArchive(&archive);
-	if (res != 0) return false;
+	if (res) return false;
 
 	if (ciaInfo.titleID == 0x000400102002CA00LL) return true; // ignore that bricking title
 
@@ -48,7 +49,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	printf("Installing %s...\n", name);
 
 	FILE* file = fopen(path, "rb");
-	if (file == NULL) return false;
+	if (!file) return false;
 
 	u32 i;
 	for (i = 0; i < amountInstalled; i++) {
@@ -60,7 +61,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	}
 
 	res = AM_StartCiaInstall(mediatype, &ciaHandle);
-	if (res != 0) return false;
+	if (res) return false;
 
 	fseek(file, 0, SEEK_END);
 	off_t size = ftell(file);
@@ -81,7 +82,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	free(block);
 
 	res = AM_FinishCiaInstall(mediatype, &ciaHandle);
-	if (res != 0) return false;
+	if (res) return false;
 
 	return true;
 
@@ -100,20 +101,20 @@ bool installFIRM(char* path, u8 mediatype, char* name, bool allowSafeTitles) {
 	res = AM_GetCiaFileInfo(mediatype, &ciaInfo, ciaFileHandle);
 	FSFILE_Close(ciaFileHandle);
 	FSUSER_CloseArchive(&archive);
-	if (res != 0) return false;
+	if (res) return false;
 
 	if ((ciaInfo.titleID & 0xFF) == 0x03 && !allowSafeTitles) return true; // ignore SAFE_MODE titles if it should
 
 	printf("Installing FIRM %s...\n", name);
 
 	FILE* file = fopen(path, "rb");
-	if (file == NULL) return false;
+	if (!file) return false;
 
 	if (ciaInfo.titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, ciaInfo.titleID);
 	else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
 
 	res = AM_StartCiaInstall(mediatype, &ciaHandle);
-	if (res != 0) return false;
+	if (res) return false;
 
 	fseek(file, 0, SEEK_END);
 	off_t size = ftell(file);
@@ -135,32 +136,33 @@ bool installFIRM(char* path, u8 mediatype, char* name, bool allowSafeTitles) {
 	free(block);
 
 	res = AM_FinishCiaInstall(mediatype, &ciaHandle);
-	if (res != 0) return false;
+	if (res) return false;
 
 	AM_InstallFirm(ciaInfo.titleID);
 
 	return true;
-
 }
 
+/**
+ * Returns true if a FIRM install is delayed (pending)
+ */
 bool isFirmPending() {
 	return pendingFirm;
 }
 
-bool installPendingFIRM() { // Installs the FIRM that installCIA delayed installation
+/**
+ * Installs the FIRM that installCIA() delayed installation
+ */
+bool installPendingFIRM() {
 
 	if (!pendingFirm) return false;
 
-	if(!installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles))
-		if(!installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles))
-			if(!installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles)) // Tries to install FIRM multiple times if it fails
-				if(!installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles))
-					installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles);
+	// Tries to install the FIRM 5 times before abandon
+	for (u8 i = 0; i < 5 && !installFIRM(firmPendingPath, firmPendingMediatype, firmPendingName, firmPendingAllowSafeTitles); i++);
 
-	bool pendingFirm = false;
+	pendingFirm = false;
 	free(firmPendingPath);
 	free(firmPendingName);
 
 	return true;
-
 }

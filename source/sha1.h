@@ -1,3 +1,4 @@
+#pragma once
 /**
  * \file mbedtls_sha1.h
  *

@@ -13,7 +13,7 @@ u8* fbTopLeft;
 u8* fbTopRight;
 u8* fbBottom;
 
-void clearScreen() {
+void clearScreens() {
 	memset(fbTopLeft, 0, 240 * 400 * 3);
 	memset(fbTopRight, 0, 240 * 400 * 3);
 	memset(fbBottom, 0, 240 * 320 * 3);
@@ -21,8 +21,8 @@ void clearScreen() {
 
 int error(char* msg, u8 errorCode) {
 	consoleClear();
-	clearScreen();
-	printf(msg);
+	clearScreens();
+	printf("\n%s", msg);
 	printf("\n\nPress (START) to exit.");
 	u32 kDown;
 	while (aptMainLoop()) {
@@ -32,7 +32,7 @@ int error(char* msg, u8 errorCode) {
 		hidScanInput();
 		kDown = hidKeysDown();
 		if (kDown & KEY_START)
-			return errorCode;
+			break;
 	}
-	return 0;
+	return errorCode;
 }

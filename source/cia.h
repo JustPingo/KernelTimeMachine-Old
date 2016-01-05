@@ -1,3 +1,4 @@
+#pragma once
 // KernelTimeMachine
 // Safe CIA manager
 // Licensed under GNU General Public License (GPL)
