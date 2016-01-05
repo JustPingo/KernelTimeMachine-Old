@@ -1,3 +1,4 @@
+#pragma once
 // KernelTimeMachine
 // Safe CIA manager
 // Licensed under GNU General Public License (GPL)
@@ -6,5 +7,5 @@
 u8 mainMenu();
 u8 downgradeMenu();
 
-extern PrintConsole botConsole;
 extern PrintConsole topConsole;
+extern PrintConsole botConsole;
