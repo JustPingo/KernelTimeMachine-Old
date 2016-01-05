@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include "archives.h"
 #include "sha1.h"
+#include "ttp.h"
+#include "cia.h"
 
 // KernelTimeMachine
 // Safe CIA manager
@@ -25,26 +27,33 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	// Just figured out there's a cleaner syntax to perform sdmc reads. Note to future.
 
+	Result res;
 	Handle file;
 	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
 	FSUSER_OpenArchive(&archive);
-	Result res = FSUSER_OpenFile(&file, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
+	res = FSUSER_OpenFile(&file, archive, fsMakePath(PATH_ASCII, path), FS_OPEN_READ, 0);
 	FSUSER_CloseArchive(&archive);
+
+	if (res)
+	{
+		FSFILE_Close(file);
+		return false;
+	}
 
 	u32 bytesRead = 0;
 	char* buf = malloc(0x3);
 	FSFILE_Read(file, &bytesRead, 0x0, buf, 0x3);
-	if ((u8)buf[0] != 116 || (u8)buf[1] != 116 || (u8)buf[2] != 112) { free(buf); return false; } // if (buf != "ttp")
+	if ((u8)buf[0] != 0x74 || (u8)buf[1] != 0x74 || (u8)buf[2] != 0x70) { free(buf); return false; } // if (buf != "ttp")
 	free(buf); // not sure if freeing all the time is needed, maybe allocating 0x14 since the beginning should be enough
 
 	buf = malloc(0x1);
 	FSFILE_Read(file, &bytesRead, 0x3, buf, 0x1);
-	if (*buf != region && buf != 0xFF) { free(buf); return false; }
+	if ((u8)buf[0] != region && (u8)buf[0] != 0xFF) { free(buf); return false; }
 	//free(buf);
 
 	//buf = malloc(0x1);
 	FSFILE_Read(file, &bytesRead, 0x4, buf, 0x1);
-	if (*buf != (char)isNew && buf != 0xFF) { free(buf); return false; }
+	if ((u8)buf[0] != (u8)isNew && (u8)buf[0] != 0xFF) { free(buf); return false; }
 	free(buf);
 
 	// SHA-1 check
@@ -63,7 +72,7 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 	u32 blockAmount = ulSize / 0x160000;
 	u32 i;
-	char* block = malloc(0x160000);
+	u8* block = malloc(0x160000);
 	for (i = 0; i < blockAmount; i++) {
 		FSFILE_Read(file, &bytesRead, 0x1D+0x160000*i, block, 0x160000);
 		mbedtls_sha1_update(&context, block, 0x160000);
@@ -79,7 +88,7 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 	FSFILE_Close(file);
 	//FSUSER_CloseArchive(&archive);
 
-	char hash[20];
+	u8 hash[20];
 	mbedtls_sha1_finish(&context, hash);
 
 	//shaBytes.c = buf;
@@ -174,11 +183,9 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 		strcpy(ciaPath, "/tmp/cias/");
 		strcat(ciaPath, entries[i].shortName);
 		strcat(ciaPath, ".cia");
-		if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
-			if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false)) // Tries to install the CIA 5 times then give up. If it has to give up, that probably means soft-brick.
-				if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
-					if (!installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false))
-						installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false);
+
+		// Tries to install the CIA 5 times before abandon
+		for (u8 i = 0; i < 5 && !installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false); i++);
 
 		free(ciaPath);
 	}
@@ -203,6 +210,6 @@ volatile bool isDone;
 Handle threadInstallHandle;
 
 void installTTPthread() {
-	installTTP(threadPath, threadMediatype);
+	installTTP((char*) threadPath, threadMediatype);
 	isDone = true;
 }
