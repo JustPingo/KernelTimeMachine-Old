@@ -5,7 +5,7 @@
 // Check out https://www.gnu.org/licenses/gpl.html
 
 u8 mainMenu();
-u8 downgradeMenu();
+u8 downgradeMenu(bool safeMode);
 
 extern PrintConsole topConsole;
 extern PrintConsole botConsole;

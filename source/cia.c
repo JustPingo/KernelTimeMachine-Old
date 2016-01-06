@@ -15,7 +15,27 @@ u8 firmPendingMediatype;
 char* firmPendingName;
 bool firmPendingAllowSafeTitles;
 
-bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInstalled, char* name, bool allowSafeTitles) {
+bool checkIfInstalled(u8 mediatype, u64 titleID) {
+
+	u32 titlesAmount;
+	AM_GetTitleCount(mediatype, &titlesAmount);
+	u64* titleIDs = malloc(sizeof(u64) * titlesAmount);
+	AM_GetTitleIdList(mediatype, titlesAmount, titleIDs);
+
+	u32 i;
+	for (i = 0; i < titlesAmount; i++) {
+		if (titleIDs[i] == titleID) {
+			free(titleIDs);
+			return true;
+		}
+	}
+
+	free(titleIDs);
+	return false;
+
+}
+
+bool installCIA(char* path, u8 mediatype, char* name, bool allowSafeTitles) {
 
 	Result res;
 	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
@@ -34,6 +54,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	if (ciaInfo.titleID == 0x000400102002CA00LL) return true; // ignore that bricking title
 
 	if ((ciaInfo.titleID & 0xFF) == 0x03 && !allowSafeTitles) return true; // ignore SAFE_MODE titles if it should
+	if ((ciaInfo.titleID & 0xFF) != 0x03 && allowSafeTitles) return true; // ignore normal titles if it should
 
 	if (ciaInfo.titleID == 0x0004013800000002LL || ciaInfo.titleID == 0x0004013820000002LL) { // if you're trying to install NATIVE_FIRM, pends it
 		firmPendingPath = malloc(strlen(path));
@@ -51,13 +72,9 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	FILE* file = fopen(path, "rb");
 	if (!file) return false;
 
-	u32 i;
-	for (i = 0; i < amountInstalled; i++) {
-		if (installedTitleIDs[i] == ciaInfo.titleID) {
-			if (ciaInfo.titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, ciaInfo.titleID);
-			else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
-			break;
-		}
+	if (checkIfInstalled(mediatype, ciaInfo.titleID)) {
+		if (ciaInfo.titleID >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, ciaInfo.titleID);
+		else AM_DeleteAppTitle(mediatype, ciaInfo.titleID);
 	}
 
 	res = AM_StartCiaInstall(mediatype, &ciaHandle);
@@ -69,6 +86,7 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 	u32 blockAmount = size / 0x160000; // Finds how many blocks of 4MB you have in the file
 	char* block = malloc(0x160000);
 	u32* bytesWritten = 0;
+	u32 i;
 	for (i = 0; i < blockAmount; i++) {
 		fread(block, 1, 0x160000, file);
 		FSFILE_Write(ciaHandle, bytesWritten, 0x160000*i, block, 0x160000, 0);
@@ -83,6 +101,8 @@ bool installCIA(char* path, u8 mediatype, u64* installedTitleIDs, u32 amountInst
 
 	res = AM_FinishCiaInstall(mediatype, &ciaHandle);
 	if (res) return false;
+
+	if (!checkIfInstalled(mediatype, ciaInfo.titleID)) return false;
 
 	return true;
 

@@ -9,7 +9,7 @@
 #include "cia.h"
 #include "ttp.h"
 #include "menu.h"
-#include "libsu.h"
+#include "libsu/libsu.h"
 
 // KernelTimeMachine
 // Safe CIA manager
@@ -47,9 +47,10 @@ int main() {
 			case 0: break;
 			case 1: next = mainMenu(); break;
 			//case 2: next = legitInstallMenu(); break;
-			case 3: next = downgradeMenu(); break;
+			case 3: next = downgradeMenu(false); break;
 			//case 4: next = downgradeMSETMenu(); break;
 			//case 5: next = downgradeBrowserMenu(); break;
+			case 6: next = downgradeMenu(true); break;
 			default: next = mainMenu();
 		}
 		if (next == 0) break;

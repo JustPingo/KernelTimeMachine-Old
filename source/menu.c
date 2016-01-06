@@ -15,7 +15,7 @@
 PrintConsole topConsole;
 PrintConsole botConsole;
 
-u8 downgradeMenu() {
+u8 downgradeMenu(bool safeMode) {
 	Result res;
 	u32 kDown;
 	u16 timer = 255;
@@ -28,6 +28,7 @@ u8 downgradeMenu() {
 		printf("WARNING!\n");
 		printf("YOU ARE ENTERING A DANGEROUS PROCESS!\n");
 		printf("Please read those instructions\nbefore trying anything.\n\n");
+		if (safeMode) printf("DO NOT DO THIS IF YOU HAVEN'T\nDONE A NORMAL DOWNGRADE YET.");
 		printf("DO NOT turn off you console during\nthe process: it WILL brick.\n");
 		printf("DO NOT get to HomebrewMenu during\nthe process: it WILL brick.\n");
 		printf("DO NOT remove the SD card during\nthe process: it WILL brick.\n");
@@ -345,6 +346,7 @@ u8 downgradeMenu() {
 
 	threadPath = completePath;
 	threadMediatype = MEDIATYPE_NAND;
+	threadSafeMode = safeMode;
 	isDone = false;
 
 	consoleClear();
@@ -371,7 +373,7 @@ u8 downgradeMenu() {
 	consoleClear();
 	consoleSelect(&topConsole);
 
-	printf("Downgrade complete.\nPress (START) to reboot the console.");
+	printf("%sowngrade complete.\nPress (START) to reboot the console.", (safeMode ? "SAFE_MODE d" : "D"));
 
 	while (aptMainLoop()) {
 
@@ -387,6 +389,7 @@ u8 downgradeMenu() {
 			aptCloseSession();
 			return 0;
 		}
+
 	}
 
 	return 0;
@@ -402,6 +405,7 @@ u8 mainMenu() {
 	printf("-----------------\n\n");
 	printf("(A) Install CIA [WIP]\n");
 	printf("(Y) Downgrade Firmware\n");
+	printf("(X) Downgrade SAFE_MODE firm\n");
 	printf("(L+Y) Downgrade MSET [WIP]\n");
 	printf("(R+Y) Downgrade Browser [WIP]\n");
 	printf("(START) Exit");
@@ -421,6 +425,8 @@ u8 mainMenu() {
 			else
 				return 3;
 		}
+		if (kDown & KEY_X)
+			return 6;
 	}
 	return 0;
 }

@@ -103,24 +103,20 @@ bool checkTTP(char region, bool isNew, char* path) { // Verifies the integrity o
 
 }
 
-void removeUselessTitles(u8 mediatype, u64* installedTitles, u32 amount) {
+void removeUselessTitles(u8 mediatype) {
 
-	printf("Removing useless title...\n");
+	printf("Removing useless titles...\n");
 	u32 i;
-	u32 y;
-	for (i = 0; i < amount; i++) {
-		for (y = 0; i < USELESS92AMOUNT; i++) {
-			if (installedTitles[i] == uselessTitlesFor92[y]) {
-				if (uselessTitlesFor92[y] >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, uselessTitlesFor92[y]);
-				else AM_DeleteAppTitle(mediatype, uselessTitlesFor92[y]);
-				break;
-			}
+	for (i = 0; i < USELESS92AMOUNT; i++) {
+		if (checkIfInstalled(mediatype, uselessTitlesFor92[i])) {
+			if (uselessTitlesFor92[i] >> 32 & 0xFFFF) AM_DeleteTitle(mediatype, uselessTitlesFor92[i]);
+			else AM_DeleteAppTitle(mediatype, uselessTitlesFor92[i]);
 		}
 	}
 
 }
 
-bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip and installCIA)
+bool installTTP(char* path, u8 mediatype, bool safeMode) { // Install a TTP file. (needs libzip and installCIA)
 
 	Result res;
 	FS_Archive archive = {ARCHIVE_SDMC, {PATH_EMPTY, 0, 0}};
@@ -129,11 +125,6 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 	FSUSER_CreateDirectory(archive, fsMakePath(PATH_ASCII, "/tmp/cias"), 0);
 	FILE* ttp = fopen(path, "rb");
 	FILE* tmp = fopen("/tmp/cias/ttp.tmp", "wb");
-
-	u32 titlesAmount;
-	AM_GetTitleCount(mediatype, &titlesAmount);
-	u64* titleIDs = malloc(sizeof(u64) * titlesAmount);
-	AM_GetTitleIdList(mediatype, titlesAmount, titleIDs);
 
 	u32 size;
 	fseek(ttp, 0x19, SEEK_SET);
@@ -172,10 +163,10 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 
 	FSUSER_DeleteFile(archive, fsMakePath(PATH_ASCII, "/tmp/cias/ttp.tmp"));
 	res = FSUSER_OpenDirectory(&ciaDir, fsarchive, fsMakePath(PATH_ASCII, "/tmp/cias"));
-	if (res != 0) { free(titleIDs); return false; }
+	if (res != 0) { return false; }
 	entries = malloc(256 * sizeof(FS_DirectoryEntry));
 	res = FSDIR_Read(ciaDir, &actualAmount, 256, entries);
-	if (res != 0) { free(titleIDs); return false; }
+	if (res != 0) { return false; }
 
 	char* ciaPath;
 	for (i = 0; i < actualAmount; i++) {
@@ -185,20 +176,18 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 		strcat(ciaPath, ".cia");
 
 		// Tries to install the CIA 5 times before abandon
-		for (u8 i = 0; i < 5 && !installCIA(ciaPath, mediatype, titleIDs, titlesAmount, entries[i].shortName, false); i++);
+		for (u8 i = 0; i < 5 && !installCIA(ciaPath, mediatype, entries[i].shortName, safeMode); i++);
 
 		free(ciaPath);
 	}
 
 	installPendingFIRM();
 
-	removeUselessTitles(mediatype, titleIDs, titlesAmount);
+	removeUselessTitles(mediatype);
 
 	FSUSER_DeleteDirectoryRecursively(archive, fsMakePath(PATH_ASCII, "/tmp/cias"));
 
 	FSUSER_CloseArchive(&archive);
-
-	free(titleIDs);
 
 	return true;
 
@@ -206,11 +195,12 @@ bool installTTP(char* path, u8 mediatype) { // Install a TTP file. (needs libzip
 
 volatile char* threadPath;
 volatile u8 threadMediatype;
+volatile bool threadSafeMode;
 volatile bool isDone;
 Handle threadInstallHandle;
 
 void installTTPthread() {
 	// TODO: Problem with (volatile char*) -> (char*)
-	installTTP((char*) threadPath, threadMediatype);
+	installTTP((char*) threadPath, threadMediatype, threadSafeMode);
 	isDone = true;
 }
