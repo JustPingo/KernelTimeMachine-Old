@@ -1,0 +1,3 @@
+[submodule "source/SuperUserLib3DS"]
+	path = source/libsu
+	url = https://github.com/delebile/SuperUserLib3DS.git
