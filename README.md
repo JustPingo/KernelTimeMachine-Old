@@ -1,6 +1,9 @@
 # KernelTimeMachine
 [![Project Status](https://img.shields.io/badge/status-in%20progress-yellow.svg)](https://github.com/JustPingo/KernelTimeMachine)
 
+# LATEST BUILD CONTAINS BRICKING BUGS 100% OF THE TIME
+# DO NOT DOWNGRADE WITH IT FOR ANY REASON
+
 Kernel Time Machine is a work in progress tool to downgrade firmware on the 3DS safely using TPP files.
 
 Visit [this GBAtemp thread](https://gbatemp.net/threads/clarification-thread-what-is-going-on.407074/) to learn more on what this project is all about.
@@ -13,7 +16,7 @@ Please note that there might be some typos and mistakes due to the fact that I'm
 
 ## Building
 
-The program requires [devkitARM](http://devkitpro.org/)
+The program requires [devkitARM](http://devkitpro.org/) and zlib.
 
 Run the `make` command on the KernelTimeMachine main folder. (If you are on Windows, you can use the msys program incluided in [DevKitPro](http://devkitpro.org/), [MinGW](http://www.mingw.org/) or [Cygwin](http://www.cygwin.com) and on Mac you can use Xcode or [install make manually](http://stackoverflow.com/questions/2556444/install-make-command-without-already-having-make-mac-os-10-5))
 
